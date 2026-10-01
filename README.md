@@ -46,7 +46,11 @@ WoW Forever/
 - You don't need `WowB-ARM64.exe`. Mac and x86 installs don't ship it, so the app downloads the matching Windows ARM64 client from Blizzard's CDN when you press Play, and checks its hashes. It also re-downloads it after a game update.
 - If you used a different folder, or moved it, the launcher shows **Locate Game Files**. Pick the folder that contains `.build.info` and `Data/`. **Change Location** switches it later.
 
-Copying over USB with `adb` is the fastest way. If you have this repo checked out, one command copies and updates everything:
+Transfer the files over to a `WoW Forever/` folder on your device. You can do this by:
+
+- **SD Card:** Insert the microSD card into your computer and copy the files over (make sure your file manager shows hidden files so `.build.info` is included).
+- **USB File Transfer:** Connect your device to your computer via USB (in File Transfer / MTP mode) and copy the files directly to internal storage (default: `/storage/emulated/0/WoW Forever/`).
+- **ADB Script:** If you have ADB installed and this repo checked out, you can use the sync script to copy and sync changes easily over USB:
 
 ```bash
 WOW_SRC="/Applications/World of Warcraft" tools/sync_wow_to_device.sh
