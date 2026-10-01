@@ -440,24 +440,66 @@ private fun ensureGameConfig(root: File) {
         flavorInfo.writeText("Product Flavor!STRING:0\nwow_classic_beta\n")
     }
     val configWtf = File(flavorDir, "WTF/Config.wtf")
+    val defaults = linkedMapOf(
+        "portal" to "\"test\"",
+        "agentUID" to "\"wow_classic_beta\"",
+        "gxApi" to "\"D3D11\"",
+        "textLocale" to "\"enUS\"",
+        "audioLocale" to "\"enUS\"",
+        "gxMaximize" to "\"1\"",
+        "gxWindowedResolution" to "\"1920x1080\"",
+        "graphicsQuality" to "\"0\"",
+        "ResampleQuality" to "\"0\"",
+        "RenderScale" to "\"1\"",
+        "farclip" to "\"1200\"",
+        "horizonClip" to "\"1200\"",
+        "RAIDfarclip" to "\"1200\"",
+        "RAIDhorizonClip" to "\"1200\"",
+        "shadowMode" to "\"0\"",
+        "graphicsShadowQuality" to "\"0\"",
+        "raidGraphicsShadowQuality" to "\"0\"",
+        "worldBaseMip" to "\"0\"",
+        "RAIDworldBaseMip" to "\"0\"",
+        "graphicsTextureResolution" to "\"2\"",
+        "raidGraphicsTextureResolution" to "\"2\"",
+        "componentTextureLevel" to "\"0\"",
+        "RAIDcomponentTextureLevel" to "\"0\"",
+        "entityShadowFadeScale" to "\"0\"",
+        "refraction" to "\"0\"",
+        "groundEffectDensity" to "\"16\""
+    )
     if (!configWtf.exists()) {
         configWtf.parentFile?.mkdirs()
-        configWtf.writeText(
-            """
-            SET portal "test"
-            SET agentUID "wow_classic_beta"
-            SET gxApi "D3D11"
-            SET textLocale "enUS"
-            SET audioLocale "enUS"
-            SET gxMaximize "1"
-            SET gxWindowedResolution "1920x1080"
-            SET graphicsQuality "3"
-            """.trimIndent() + "\n",
-        )
+        configWtf.writeText(defaults.entries.joinToString("\n") { "SET ${it.key} ${it.value}" } + "\n")
     } else {
-        val lines = configWtf.readLines()
-        val forcedApi = lines.filterNot { it.startsWith("SET gxApi", ignoreCase = true) } + "SET gxApi \"D3D11\""
-        if (forcedApi.toSet() != lines.toSet()) configWtf.writeText(forcedApi.joinToString("\n") + "\n")
+        val lines = configWtf.readLines().filterNot { it.startsWith("SET ResampleSharpness", ignoreCase = true) }
+        val existingKeys = mutableSetOf<String>()
+        val updatedLines = lines.map { line ->
+            if (line.startsWith("SET ", ignoreCase = true)) {
+                val parts = line.removePrefix("SET ").trim().split(" ", limit = 2)
+                if (parts.size == 2) {
+                    val key = parts[0]
+                    existingKeys.add(key)
+                    when {
+                        key.equals("gxApi", ignoreCase = true) -> "SET gxApi \"D3D11\""
+                        key == "RenderScale" && parts[1] != "\"1\"" -> "SET RenderScale \"1\""
+                        key == "ResampleQuality" && parts[1] != "\"0\"" -> "SET ResampleQuality \"0\""
+                        key in listOf("farclip", "horizonClip", "RAIDfarclip", "RAIDhorizonClip") && parts[1] == "\"3000\"" -> "SET $key \"1200\""
+                        key in listOf("worldBaseMip", "RAIDworldBaseMip") && parts[1] == "\"2\"" -> "SET $key \"0\""
+                        key in listOf("graphicsTextureResolution", "raidGraphicsTextureResolution") && parts[1] == "\"0\"" -> "SET $key \"2\""
+                        key in listOf("componentTextureLevel", "RAIDcomponentTextureLevel") && parts[1] == "\"1\"" -> "SET $key \"0\""
+                        else -> line
+                    }
+                } else line
+            } else line
+        }.toMutableList()
+
+        defaults.forEach { (k, v) ->
+            if (k !in existingKeys) updatedLines.add("SET $k $v")
+        }
+        if (updatedLines != lines) {
+            configWtf.writeText(updatedLines.joinToString("\n") + "\n")
+        }
     }
 }
 
