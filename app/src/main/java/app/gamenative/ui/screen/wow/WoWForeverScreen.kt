@@ -2,6 +2,8 @@ package app.gamenative.ui.screen.wow
 
 import android.content.Context
 import android.os.Environment
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,6 +16,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,6 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import app.gamenative.ui.components.getPathFromTreeUri
+import app.gamenative.utils.CustomGameScanner
 import com.winlator.container.Container
 import com.winlator.container.ContainerManager
 import com.winlator.contents.AdrenotoolsManager
@@ -50,11 +56,7 @@ fun WoWForeverScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var gamePath by remember {
-        mutableStateOf(
-            File(Environment.getExternalStorageDirectory(), "WoW Forever").absolutePath
-        )
-    }
+    var gamePath by remember { mutableStateOf(GamePath.load(context)) }
 
     var isLaunching by remember { mutableStateOf(false) }
     var hasSavedLogin by remember { mutableStateOf(BattleNetSignIn.load(context) != null) }
@@ -63,20 +65,37 @@ fun WoWForeverScreen(
     var exeExists by remember { mutableStateOf(false) }
     var dataExists by remember { mutableStateOf(false) }
     var buildInfoExists by remember { mutableStateOf(false) }
+    var hasStorageAccess by remember { mutableStateOf(true) }
 
     fun checkFiles() {
         val root = File(gamePath)
-        val exe = File(root, "_classic_beta_/WowB-ARM64.exe")
+        val exe = File(root, "${WowClientDownloader.FLAVOR_DIR}/WowB-ARM64.exe")
         val dataDir = File(root, "Data")
 
         exeExists = exe.exists()
         dataExists = dataDir.exists() && (dataDir.listFiles()?.isNotEmpty() == true)
         buildInfoExists = File(root, ".build.info").exists()
+        hasStorageAccess = !root.exists() || root.list() != null || CustomGameScanner.hasStoragePermission(context, gamePath)
     }
 
-    LaunchedEffect(gamePath) {
+    LifecycleResumeEffect(gamePath) {
         checkFiles()
+        onPauseOrDispose { }
     }
+
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val path = getPathFromTreeUri(context, uri) ?: return@rememberLauncherForActivityResult
+        val root = GamePath.findGameRoot(File(path))
+        if (root == null) {
+            errorMessage = "No .build.info found in $path. Pick the folder that contains .build.info and Data/."
+            return@rememberLauncherForActivityResult
+        }
+        errorMessage = null
+        gamePath = root.absolutePath
+        GamePath.save(context, gamePath)
+    }
+
+    val filesMissing = !(dataExists && buildInfoExists)
 
     fun launchGame() {
         if (isLaunching) return
@@ -99,6 +118,17 @@ fun WoWForeverScreen(
                     "Missing .build.info in $gamePath. Copy it from your WoW install."
                 }
                 ensureGameConfig(File(gamePath))
+
+                try {
+                    WowClientDownloader.download(File(gamePath)) { msg ->
+                        scope.launch(Dispatchers.Main) { statusText = msg }
+                    }
+                } catch (e: Exception) {
+                    if (!File(gamePath, "${WowClientDownloader.FLAVOR_DIR}/WowB-ARM64.exe").exists()) {
+                        throw IllegalStateException("Couldn't download WowB-ARM64.exe: ${e.message}", e)
+                    }
+                    Timber.w(e, "Client update check failed, launching the existing WowB-ARM64.exe")
+                }
 
                 // 2. Configure container
                 scope.launch(Dispatchers.Main) { statusText = "Configuring Adreno 740 container..." }
@@ -227,7 +257,7 @@ fun WoWForeverScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    CheckItem(label = "ARM64 Binary (WowB-ARM64.exe)", ready = exeExists)
+                    CheckItem(label = if (exeExists) "ARM64 Binary (WowB-ARM64.exe)" else "ARM64 Binary (downloads on Play)", ready = exeExists)
                     Spacer(modifier = Modifier.height(8.dp))
                     CheckItem(label = "Game Asset Archives (Data/)", ready = dataExists)
                     Spacer(modifier = Modifier.height(8.dp))
@@ -278,9 +308,33 @@ fun WoWForeverScreen(
                         textAlign = TextAlign.Center
                     )
                 } else {
+                    if (!hasStorageAccess) {
+                        OutlinedButton(
+                            onClick = { CustomGameScanner.requestManageExternalStoragePermission(context) },
+                            modifier = Modifier.fillMaxWidth(0.85f).height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Text("ALLOW FILE ACCESS", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC79C6E))
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
+                    if (filesMissing) {
+                        OutlinedButton(
+                            onClick = { folderPicker.launch(null) },
+                            modifier = Modifier.fillMaxWidth(0.85f).height(48.dp),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFFC79C6E))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("LOCATE GAME FILES", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC79C6E))
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
                     Button(
                         onClick = { launchGame() },
-                        enabled = !isLaunching,
+                        enabled = !isLaunching && !filesMissing,
                         modifier = Modifier
                             .fillMaxWidth(0.85f)
                             .height(56.dp),
@@ -312,6 +366,14 @@ fun WoWForeverScreen(
                             Text("Refresh Status", fontSize = 12.sp, color = Color(0xFF88A0C0))
                         }
 
+                        if (!filesMissing) {
+                            TextButton(onClick = { folderPicker.launch(null) }) {
+                                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF88A0C0))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Change Location", fontSize = 12.sp, color = Color(0xFF88A0C0))
+                            }
+                        }
+
                         if (hasSavedLogin) {
                             TextButton(onClick = {
                                 BattleNetSignIn.forget(context)
@@ -329,6 +391,28 @@ fun WoWForeverScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+}
+
+private object GamePath {
+    private const val PREFS = "wow_forever"
+    private const val KEY_GAME_PATH = "game_path"
+
+    private val defaultPath = File(Environment.getExternalStorageDirectory(), "WoW Forever")
+
+    fun load(context: Context): String {
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_GAME_PATH, null)?.let(::File)
+        val usable = listOfNotNull(saved, defaultPath).firstOrNull { File(it, ".build.info").isFile }
+        return (usable ?: saved ?: defaultPath).absolutePath
+    }
+
+    fun save(context: Context, path: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_GAME_PATH, path).apply()
+    }
+
+    fun findGameRoot(picked: File): File? =
+        sequenceOf(picked, picked.parentFile, File(picked, "WoW Forever"), File(picked, "World of Warcraft"))
+            .filterNotNull()
+            .firstOrNull { File(it, ".build.info").isFile }
 }
 
 @Composable

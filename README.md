@@ -31,36 +31,22 @@ Requirements:
 
 Download `WoW-Forever.apk` from the [latest release](https://github.com/jaredgei/wow-forever-android/releases/latest) and install it on your device. The app's package name is `app.wowforever`, so it can sit alongside GameNative or Winlator.
 
-### 2. Copy your WoW client to the device
+### 2. Copy your WoW game data to the device
 
-Create this folder on the device's internal storage:
-
-```
-/storage/emulated/0/WoW Forever/
-```
-
-Fill it from your Battle.net install (on a Mac that's `/Applications/World of Warcraft/`):
+Copy two things from your Battle.net install (on a Mac that's `/Applications/World of Warcraft/`) into a folder on the device. The default is `/storage/emulated/0/WoW Forever/`. Any other folder works too, including one on an SD card.
 
 ```
 WoW Forever/
 ├── .build.info                   <- from the install root
-├── Data/                         <- the whole Data folder (~67 GB)
-└── _classic_beta_/
-    ├── .flavor.info              <- from _classic_beta_/
-    └── WowB-ARM64.exe            <- see below
+└── Data/                         <- the whole Data folder (~67 GB)
 ```
 
 - `Data/` is the same on every platform, so a Mac, Windows, or ARM install all work.
-- `.build.info` and `.flavor.info` are hidden files. Copy them too. Without them the game fails with *"CAS system was unable to initialize"*.
-- **`WowB-ARM64.exe`**: Windows ARM installs already have it. Mac and x86 installs don't ship it. Download it straight from Blizzard's CDN with:
+- `.build.info` is a hidden file. Copy it too. Without it the game fails with *"CAS system was unable to initialize"*.
+- You don't need `WowB-ARM64.exe`. Mac and x86 installs don't ship it, so the app downloads the matching Windows ARM64 client from Blizzard's CDN when you press Play, and checks its hashes. It also re-downloads it after a game update.
+- If you used a different folder, or moved it, the launcher shows **Locate Game Files**. Pick the folder that contains `.build.info` and `Data/`. **Change Location** switches it later.
 
-  ```bash
-  WOW_DIR="/Applications/World of Warcraft" python3 tools/download_wow_arm64.py
-  ```
-
-  This reads your install's `.build.info`, fetches the matching ARM64 client and checks its hashes. The result goes in `./WowB-ARM64/`.
-
-Copying over USB with `adb` is the fastest way. If you have this repo checked out, one command does all of the above:
+Copying over USB with `adb` is the fastest way. If you have this repo checked out, one command copies and updates everything:
 
 ```bash
 WOW_SRC="/Applications/World of Warcraft" tools/sync_wow_to_device.sh
@@ -68,7 +54,7 @@ WOW_SRC="/Applications/World of Warcraft" tools/sync_wow_to_device.sh
 
 ### 3. Play
 
-Open **WoW Forever** and press **Play**. The first launch downloads and installs the Windows environment, which takes a few minutes and needs an internet connection. After that it boots straight into the game.
+Open **WoW Forever** and press **Play**. The first launch downloads the ARM64 game client and installs the Windows environment, which takes a few minutes and needs an internet connection. After that it boots straight into the game.
 
 The app creates a basic `WTF/Config.wtf` on first run and always sets `gxApi "D3D11"`, the renderer that works with DXVK.
 
