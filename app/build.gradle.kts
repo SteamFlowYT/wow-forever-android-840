@@ -19,14 +19,6 @@ val keystoreProperties: Properties? = if (keystorePropertiesFile.exists()) {
     }
 } else null
 
-
-
-// Debug-only: package the repo's manifest.json so debug builds read it locally (never in release).
-val copyDebugManifest by tasks.registering(Copy::class) {
-    from(rootProject.file("manifest.json"))
-    into(layout.buildDirectory.dir("generated/debugManifest"))
-}
-
 android {
     namespace = "app.gamenative"
     compileSdk = 36
@@ -53,8 +45,8 @@ android {
         manifestPlaceholders["screenOrientation"] = "unspecified"
         buildConfigField("boolean", "XR_BUILD", "false")
 
-        versionCode = 110
-        versionName = "1.1.0"
+        versionCode = 120
+        versionName = "1.2.0"
 
         buildConfigField("boolean", "GOLD", "false")
         fun secret(name: String) =
@@ -183,9 +175,6 @@ android {
             assets {
                 srcDirs("src/modern/assets", "src/main/assets")
             }
-        }
-        getByName("debug") {
-            assets.srcDir(copyDebugManifest)
         }
     }
 

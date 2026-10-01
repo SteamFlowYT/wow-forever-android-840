@@ -94,7 +94,6 @@ import app.gamenative.PluviaApp
 import app.gamenative.PrefManager
 import app.gamenative.data.GameSource
 import app.gamenative.data.GyroSettings
-import app.gamenative.filedetect.GameFileDetection
 import app.gamenative.data.ShooterModeConfig
 import app.gamenative.events.AndroidEvent
 import app.gamenative.ui.enums.Orientation
@@ -117,11 +116,9 @@ import app.gamenative.utils.AssetUtils
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.downloader.CoreDriverDownloader
 import app.gamenative.utils.CustomGameScanner
-import app.gamenative.utils.DebugReportUtils
 import app.gamenative.utils.ExecutableSelectionUtils
 import app.gamenative.utils.LsfgQuickMenuHelper
 import app.gamenative.utils.LsfgVkManager
-import app.gamenative.utils.ManifestComponentHelper
 import app.gamenative.utils.PerfSampler
 import app.gamenative.utils.GameCompatibilityService
 import app.gamenative.utils.downloader.DXWrapperDownloader
@@ -2263,8 +2260,6 @@ fun XServerScreen(
                                     onExtractFileListener,
                                 )
                             }
-                            extractArm64ecInputDLLs(context, container) // REQUIRED: Uses updated xinput1_3 main.c from x86_64 build, prevents crashes with 3+ players, avoids need for input shim dlls.
-                            extractx86_64InputDlls(context, container)
 
                             runBlocking {
                                 extractGraphicsDriverFiles(
@@ -3799,7 +3794,6 @@ private fun setupXEnvironment(
         wineLogDir.mkdirs()
         logFile = File(wineLogDir, if (debugRun) "debug_run_$appId.log" else "wine_debug.log")
         if (logFile.exists()) logFile.delete()
-        if (debugRun) DebugReportUtils.startLogcatCapture(context, appId)
     }
 
     ProcessHelper.addDebugCallback { line ->
@@ -4072,9 +4066,6 @@ private fun setupXEnvironment(
 
     try {
         environment.startEnvironmentComponents()
-        if (container != null && !bootToContainer) {
-            CoroutineScope(Dispatchers.IO).launch { GameFileDetection.ensure(context, container) }
-        }
     } catch (e: Exception) {
         Timber.e(e, "Failed to start environment components, cleaning up")
         try {
@@ -4285,36 +4276,6 @@ private fun unpackExecutableFile(
     }
 }
 
-private fun extractArm64ecInputDLLs(context: Context, container: Container) {
-    val inputAsset = "arm64ec_input_dlls.tzst"
-    val imageFs = ImageFs.find(context)
-    val wineVersion: String? = container.getWineVersion()
-    Log.d("XServerDisplayActivity", "arm64ec Input DLL Extraction Verification: Container Wine version: " + wineVersion)
-
-    // Check if the wineVersion string is not null and contains "arm64ec"
-    if (wineVersion != null && wineVersion.contains("proton-9.0-arm64ec")) {
-        val wineFolder: File = File(imageFs.getWinePath() + "/lib/wine/")
-        Log.d("XServerDisplayActivity", "Wine version contains arm64ec. Extracting input dlls to " + wineFolder.getPath())
-        val success: Boolean = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.assets, inputAsset, wineFolder)
-        if (!success) {
-            Log.d("XServerDisplayActivity", "Failed to extract input dlls")
-        }
-    } else {
-        // Updated log message for clarity
-        Log.d("XServerDisplayActivity", "Wine version is not arm64ec, skipping input dlls extraction.")
-    }
-}
-
-private fun extractx86_64InputDlls(context: Context, container: Container) {
-    val inputAsset = "x86_64_input_dlls.tzst"
-    val imageFs = ImageFs.find(context)
-    val wineVersion: String? = container.getWineVersion()
-    Log.d("XServerDisplayActivity", "x86_64 Input DLL Extraction Verification: Container Wine version: " + wineVersion)
-    if ("proton-9.0-x86_64" == wineVersion) {
-        val wineFolder: File = File(imageFs.getWinePath() + "/lib/wine/")
-        Log.d("XServerDisplayActivity", "Extracting input dlls to " + wineFolder.getPath())
-    } else Log.d("XServerDisplayActivity", "Wine version is not proton-9.0-x86_64, skipping input dlls extraction")
-}
 
 private suspend fun setupWineSystemFiles(
     context: Context,
@@ -4574,6 +4535,18 @@ private suspend fun extractGraphicsDriverComponent(
  * Helper function to extract a dxwrapper component, downloading if needed (modern variant)
  * or using bundled assets (legacy variant).
  */
+private fun isAtLeastVersion(value: String, minMajor: Int, minMinor: Int, minPatch: Int): Boolean {
+    val match = Regex("""^(\d+)\.(\d+)(?:\.(\d+))?""").find(value) ?: return false
+    val major = match.groupValues.getOrNull(1)?.toIntOrNull() ?: 0
+    val minor = match.groupValues.getOrNull(2)?.toIntOrNull() ?: 0
+    val patch = match.groupValues.getOrNull(3)?.toIntOrNull() ?: 0
+    return when {
+        major != minMajor -> major > minMajor
+        minor != minMinor -> minor > minMinor
+        else -> patch >= minPatch
+    }
+}
+
 private suspend fun extractDXWrapperComponent(
     context: Context,
     componentId: String,
@@ -4655,7 +4628,7 @@ private suspend fun extractDXWrapperFiles(
             val dxvkVersion = dxwrapperConfig.get("version", dxvkMinVersion)
             val dxvkVersionForVkd3d = if (vortekLike && GPUHelper.vkGetApiVersionSafe() < GPUHelper.vkMakeVersion(1, 3, 0)) {
                 "1.10.3"
-            } else if (ManifestComponentHelper.isAtLeastVersion(dxvkVersion, 2, 1, 0)) {
+            } else if (isAtLeastVersion(dxvkVersion, 2, 1, 0)) {
                 dxvkVersion
             } else {
                 dxvkMinVersion

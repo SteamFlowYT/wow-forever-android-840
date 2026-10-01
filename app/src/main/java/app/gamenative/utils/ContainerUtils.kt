@@ -384,78 +384,7 @@ object ContainerUtils {
         applyToContainer(context, container, containerData)
     }
 
-    /**
-     * Applies best config map to containerData, handling all possible fields.
-     * Used when applyKnownConfig=true returns all validated fields.
-     */
-    fun applyBestConfigMapToContainerData(containerData: ContainerData, bestConfigMap: Map<String, Any?>): ContainerData {
-        var updatedData = containerData
-        bestConfigMap.forEach { (key, value) ->
-            updatedData = when (key) {
-                "executablePath" -> value?.let { updatedData.copy(executablePath = it as? String ?: updatedData.executablePath) }
-                    ?: updatedData
-                "graphicsDriver" -> value?.let { updatedData.copy(graphicsDriver = it as? String ?: updatedData.graphicsDriver) }
-                    ?: updatedData
-                "graphicsDriverVersion" -> value?.let {
-                    updatedData.copy(
-                        graphicsDriverVersion =
-                            it as? String ?: updatedData.graphicsDriverVersion,
-                    )
-                }
-                    ?: updatedData
-                "graphicsDriverConfig" -> value?.let {
-                    updatedData.copy(
-                        graphicsDriverConfig =
-                            it as? String ?: updatedData.graphicsDriverConfig,
-                    )
-                }
-                    ?: updatedData
-                "dxwrapper" -> value?.let { updatedData.copy(dxwrapper = it as? String ?: updatedData.dxwrapper) } ?: updatedData
-                "dxwrapperConfig" -> value?.let { updatedData.copy(dxwrapperConfig = it as? String ?: updatedData.dxwrapperConfig) }
-                    ?: updatedData
-                "execArgs" -> value?.let { updatedData.copy(execArgs = it as? String ?: updatedData.execArgs) } ?: updatedData
-                "startupSelection" -> value?.let {
-                    updatedData.copy(
-                        startupSelection =
-                            (it as? Int)?.toByte() ?: updatedData.startupSelection,
-                    )
-                }
-                    ?: updatedData
-                "box64Version" -> value?.let { updatedData.copy(box64Version = it as? String ?: updatedData.box64Version) } ?: updatedData
-                "box64Preset" -> value?.let { updatedData.copy(box64Preset = it as? String ?: updatedData.box64Preset) } ?: updatedData
-                "containerVariant" -> value?.let { updatedData.copy(containerVariant = it as? String ?: updatedData.containerVariant) }
-                    ?: updatedData
-                "wineVersion" -> value?.let { updatedData.copy(wineVersion = it as? String ?: updatedData.wineVersion) } ?: updatedData
-                "emulator" -> value?.let { updatedData.copy(emulator = it as? String ?: updatedData.emulator) } ?: updatedData
-                "fexcoreVersion" -> value?.let { updatedData.copy(fexcoreVersion = it as? String ?: updatedData.fexcoreVersion) }
-                    ?: updatedData
-                "fexcoreTSOMode" -> value?.let { updatedData.copy(fexcoreTSOMode = it as? String ?: updatedData.fexcoreTSOMode) }
-                    ?: updatedData
-                "fexcoreX87Mode" -> value?.let { updatedData.copy(fexcoreX87Mode = it as? String ?: updatedData.fexcoreX87Mode) }
-                    ?: updatedData
-                "fexcoreMultiBlock" -> value?.let { updatedData.copy(fexcoreMultiBlock = it as? String ?: updatedData.fexcoreMultiBlock) }
-                    ?: updatedData
-                "fexcorePreset" -> value?.let { updatedData.copy(fexcorePreset = it as? String ?: updatedData.fexcorePreset) }
-                    ?: updatedData
-                "useLegacyDRM" -> value?.let { updatedData.copy(useLegacyDRM = it as? Boolean ?: updatedData.useLegacyDRM) } ?: updatedData
-                "steamOfflineMode" -> value?.let { updatedData.copy(steamOfflineMode = it as? Boolean ?: updatedData.steamOfflineMode) } ?: updatedData
-                "epicOfflineMode" -> value?.let { updatedData.copy(epicOfflineMode = it as? Boolean ?: updatedData.epicOfflineMode) } ?: updatedData
-                "unpackFiles" -> value?.let { updatedData.copy(unpackFiles = it as? Boolean ?: updatedData.unpackFiles) } ?: updatedData
-                "suspendPolicy" -> value?.let { updatedData.copy(suspendPolicy = it as? String ?: updatedData.suspendPolicy) } ?: updatedData
-                "envVars" -> value?.let { updatedData.copy(envVars = it as? String ?: updatedData.envVars) } ?: updatedData
-                "cpuList" -> value?.let { updatedData.copy(cpuList = it as? String ?: updatedData.cpuList) } ?: updatedData
-                "cpuListWoW64" -> value?.let { updatedData.copy(cpuListWoW64 = it as? String ?: updatedData.cpuListWoW64) } ?: updatedData
-                "audioDriver" -> value?.let { updatedData.copy(audioDriver = it as? String ?: updatedData.audioDriver) } ?: updatedData
-                "wincomponents" -> value?.let { updatedData.copy(wincomponents = it as? String ?: updatedData.wincomponents) } ?: updatedData
-                "videoMemorySize" -> value?.let { updatedData.copy(videoMemorySize = it as? String ?: updatedData.videoMemorySize) } ?: updatedData
-                "launchBionicSteam" -> value?.let { updatedData.copy(launchBionicSteam = it as? Boolean ?: updatedData.launchBionicSteam) } ?: updatedData
-                "launchRealSteam" -> value?.let { updatedData.copy(launchRealSteam = it as? Boolean ?: updatedData.launchRealSteam) } ?: updatedData
-                "steamType" -> value?.let { updatedData.copy(steamType = (it as? String)?.takeIf { s -> s.isNotBlank() } ?: updatedData.steamType) } ?: updatedData
-                else -> updatedData
-            }
-        }
-        return updatedData
-    }
+
 
     fun applyToContainer(context: Context, container: Container, containerData: ContainerData) {
         applyToContainer(context, container, containerData, saveToDisk = true)
@@ -737,48 +666,6 @@ object ContainerUtils {
             }
         }
 
-        // Check for cached best config (store-backed games only, only if no custom config provided)
-        var bestConfigMap: Map<String, Any?>? = null
-
-        if (supportsKnownConfigAutoApply(gameSource) && customConfig == null && PrefManager.autoApplyKnownConfig) {
-            try {
-                val gameName = resolveGameName(appId)
-                if (gameName != "Unknown" && gameName.isNotBlank()) {
-                    val gpuName = GPUInformation.getRenderer(context)
-
-                    // Check cache first (synchronous, fast)
-                    // If not cached, make request on background thread (not UI thread)
-                    runBlocking(Dispatchers.IO) {
-                        try {
-                            val bestConfig = BestConfigService.fetchBestConfig(
-                                context = context,
-                                gameName = gameName,
-                                gpuName = gpuName,
-                                gameStore = gameSource.name,
-                            )
-                            if (bestConfig != null && bestConfig.matchType != "no_match") {
-                                Timber.i("Applying best config for $gameName (matchType: ${bestConfig.matchType})")
-                                val parsedConfig = BestConfigService.parseConfigToContainerData(
-                                    context,
-                                    bestConfig.bestConfig,
-                                    bestConfig.matchType,
-                                    true,
-                                    bestConfig.matchedStore.equals(gameSource.name, ignoreCase = true),
-                                    matchedGpu = bestConfig.matchedGpu,
-                                )
-                                if (parsedConfig != null && parsedConfig.isNotEmpty()) {
-                                    bestConfigMap = parsedConfig
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Timber.w(e, "Failed to get best config for container creation: ${e.message}")
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Timber.w(e, "Error checking for best config: ${e.message}")
-            }
-        }
 
         // Initialize container with default/custom config or best config
         var containerData = if (customConfig != null) {
@@ -855,12 +742,6 @@ object ContainerUtils {
             )
         }
 
-        // Apply best config map to containerData if available (full validated config on first run when components exist)
-        containerData = if (bestConfigMap != null && bestConfigMap.isNotEmpty()) {
-            applyBestConfigMapToContainerData(containerData, bestConfigMap)
-        } else {
-            containerData
-        }
 
         if (Build.MANUFACTURER.equals("samsung", ignoreCase = true) && GPUInformation.isAdreno740(context)) {
             val ev = EnvVars(containerData.envVars)
