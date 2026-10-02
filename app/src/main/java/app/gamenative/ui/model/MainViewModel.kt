@@ -29,6 +29,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -87,8 +88,9 @@ class MainViewModel @Inject constructor(
     }
 
     private val onSetBootingSplashText: (AndroidEvent.SetBootingSplashText) -> Unit = {
-        setBootingSplashText(it.text)
-        setShowBootingSplash(true)
+        if (_state.value.showBootingSplash) {
+            setBootingSplashText(it.text)
+        }
     }
 
     private val onClearBootingSplash: (AndroidEvent.ClearBootingSplash) -> Unit = {
@@ -226,11 +228,14 @@ class MainViewModel @Inject constructor(
         _state.update { it.copy(debugRun = value) }
     }
 
+    private var launchAppJob: Job? = null
+
     fun launchApp(context: Context, appId: String) {
         gameSessionStartTime = System.currentTimeMillis()
         gamePlayedThisSession = true
         PrefManager.hasAttemptedGameLaunch = true
-        viewModelScope.launch {
+        launchAppJob?.cancel()
+        launchAppJob = viewModelScope.launch {
             setShowBootingSplash(true)
             PluviaApp.events.emit(AndroidEvent.SetAllowedOrientation(PrefManager.allowedOrientation))
 
@@ -252,6 +257,7 @@ class MainViewModel @Inject constructor(
                     else -> ""
                 }
             }
+            if (!isActive) return@launch
             setBootingSplashHeroImageUrl(heroUrl)
 
             val apiJob = viewModelScope.async(Dispatchers.IO) {
@@ -259,7 +265,9 @@ class MainViewModel @Inject constructor(
             }
 
             delay(100)
+            if (!isActive) return@launch
             apiJob.await()
+            if (!isActive) return@launch
             _uiEvent.send(MainUiEvent.LaunchApp)
         }
     }
@@ -308,6 +316,8 @@ class MainViewModel @Inject constructor(
 
     /** The splash's back button: hide the splash and close the guest the way a blocked session does. */
     fun abortBoot() {
+        launchAppJob?.cancel()
+        launchAppJob = null
         viewModelScope.launch {
             Timber.tag("MainViewModel").i("Boot aborted from the splash")
             bootingSplashTimeoutJob?.cancel()

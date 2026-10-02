@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +43,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.gamenative.PluviaApp
 import app.gamenative.R
+import app.gamenative.events.AndroidEvent
 import app.gamenative.ui.theme.BrandGradient
 import app.gamenative.ui.theme.PluviaTheme
 
@@ -54,6 +57,50 @@ fun BootingSplash(
     heroImageUrl: String = "",
     onAbort: (() -> Unit)? = null,
 ) {
+    if (visible && onAbort != null) {
+        DisposableEffect(visible) {
+            var start = false
+            var select = false
+            var l2 = false
+            var r2 = false
+            var aborted = false
+
+            fun check(): Boolean = (!aborted && start && select && l2 && r2).also {
+                if (it) {
+                    aborted = true
+                    onAbort()
+                }
+            }
+
+            val keyHandler: (AndroidEvent.KeyEvent) -> Boolean = keyHandler@ { event ->
+                val down = event.event.action == android.view.KeyEvent.ACTION_DOWN
+                when (event.event.keyCode) {
+                    android.view.KeyEvent.KEYCODE_BUTTON_START -> start = down
+                    android.view.KeyEvent.KEYCODE_BUTTON_SELECT, android.view.KeyEvent.KEYCODE_BACK -> select = down
+                    android.view.KeyEvent.KEYCODE_BUTTON_L2 -> l2 = down
+                    android.view.KeyEvent.KEYCODE_BUTTON_R2 -> r2 = down
+                    else -> return@keyHandler false
+                }
+                check() || (down && (start || select || l2 || r2))
+            }
+
+            val motionHandler: (AndroidEvent.MotionEvent) -> Boolean = { event ->
+                event.event?.let { me ->
+                    l2 = maxOf(me.getAxisValue(android.view.MotionEvent.AXIS_LTRIGGER), me.getAxisValue(android.view.MotionEvent.AXIS_BRAKE)) >= 0.3f
+                    r2 = maxOf(me.getAxisValue(android.view.MotionEvent.AXIS_RTRIGGER), me.getAxisValue(android.view.MotionEvent.AXIS_GAS)) >= 0.3f
+                    check()
+                } ?: false
+            }
+
+            PluviaApp.events.on<AndroidEvent.KeyEvent, Boolean>(keyHandler)
+            PluviaApp.events.on<AndroidEvent.MotionEvent, Boolean>(motionHandler)
+            onDispose {
+                PluviaApp.events.off<AndroidEvent.KeyEvent, Boolean>(keyHandler)
+                PluviaApp.events.off<AndroidEvent.MotionEvent, Boolean>(motionHandler)
+            }
+        }
+    }
+
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(animationSpec = tween(durationMillis = 400)),
@@ -126,6 +173,18 @@ fun BootingSplash(
                         letterSpacing = 1.sp,
                     ),
                     color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "Press Start + Select + L2 + R2 to return to setup screen",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp,
+                    ),
+                    color = Color(0xFFC79C6E).copy(alpha = 0.8f),
                     textAlign = TextAlign.Center,
                 )
 

@@ -41,13 +41,23 @@ import com.winlator.contents.ContentProfile
 import com.winlator.contents.ContentsManager
 import com.winlator.core.TarCompressorUtils
 import com.winlator.xenvironment.ImageFs
+import app.gamenative.PluviaApp
+import app.gamenative.events.AndroidEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
+
+object WoWLauncherState {
+    var shouldAutoLaunch = true
+}
 
 @Composable
 fun WoWForeverScreen(
@@ -59,6 +69,7 @@ fun WoWForeverScreen(
     var gamePath by remember { mutableStateOf(GamePath.load(context)) }
 
     var isLaunching by remember { mutableStateOf(false) }
+    var launchJob by remember { mutableStateOf<Job?>(null) }
     var hasSavedLogin by remember { mutableStateOf(BattleNetSignIn.load(context) != null) }
     var statusText by remember { mutableStateOf("Ready to launch") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -67,7 +78,7 @@ fun WoWForeverScreen(
     var buildInfoExists by remember { mutableStateOf(false) }
     var hasStorageAccess by remember { mutableStateOf(true) }
 
-    fun checkFiles() {
+    fun checkFiles(): Boolean {
         val root = File(gamePath)
         val exe = File(root, "${WowClientDownloader.FLAVOR_DIR}/WowB-ARM64.exe")
         val dataDir = File(root, "Data")
@@ -76,11 +87,33 @@ fun WoWForeverScreen(
         dataExists = dataDir.exists() && (dataDir.listFiles()?.isNotEmpty() == true)
         buildInfoExists = File(root, ".build.info").exists()
         hasStorageAccess = !root.exists() || root.list() != null || CustomGameScanner.hasStoragePermission(context, gamePath)
+
+        return exeExists && dataExists && buildInfoExists && hasStorageAccess
     }
 
     LifecycleResumeEffect(gamePath) {
         checkFiles()
-        onPauseOrDispose { }
+        isLaunching = false
+        statusText = "Ready to launch"
+        onPauseOrDispose {
+            launchJob?.cancel()
+            launchJob = null
+        }
+    }
+
+    DisposableEffect(Unit) {
+        val reset: (Any) -> Unit = {
+            launchJob?.cancel()
+            launchJob = null
+            isLaunching = false
+            statusText = "Ready to launch"
+        }
+        PluviaApp.events.on<AndroidEvent.ForceCloseApp, Unit>(reset)
+        PluviaApp.events.on<AndroidEvent.GuestProgramTerminated, Unit>(reset)
+        onDispose {
+            PluviaApp.events.off<AndroidEvent.ForceCloseApp, Unit>(reset)
+            PluviaApp.events.off<AndroidEvent.GuestProgramTerminated, Unit>(reset)
+        }
     }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -103,7 +136,7 @@ fun WoWForeverScreen(
         errorMessage = null
         statusText = "Preparing components..."
 
-        scope.launch(Dispatchers.IO) {
+        launchJob = scope.launch(Dispatchers.IO) {
             try {
                 // 1. Ensure components from assets are installed
                 val componentsOk = installBundledComponents(context) { msg ->
@@ -170,11 +203,13 @@ fun WoWForeverScreen(
                     throw IllegalStateException("Container creation failed. Check system storage and logs.")
                 }
 
-                scope.launch(Dispatchers.Main) {
+                if (!isActive) return@launch
+                withContext(Dispatchers.Main) {
                     statusText = "Booting into World of Warcraft..."
                     onLaunch(containerId)
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) return@launch
                 Timber.e(e, "Error launching WoW Forever")
                 scope.launch(Dispatchers.Main) {
                     errorMessage = e.message ?: "Launch failed"
@@ -182,6 +217,14 @@ fun WoWForeverScreen(
                     isLaunching = false
                 }
             }
+        }
+    }
+
+    LaunchedEffect(gamePath) {
+        val ready = checkFiles()
+        if (WoWLauncherState.shouldAutoLaunch && ready) {
+            WoWLauncherState.shouldAutoLaunch = false
+            launchGame()
         }
     }
 
@@ -393,7 +436,7 @@ fun WoWForeverScreen(
     }
 }
 
-private object GamePath {
+object GamePath {
     private const val PREFS = "wow_forever"
     private const val KEY_GAME_PATH = "game_path"
 
@@ -407,6 +450,17 @@ private object GamePath {
 
     fun save(context: Context, path: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_GAME_PATH, path).apply()
+    }
+
+    fun isReady(context: Context, path: String = load(context)): Boolean {
+        if (path.isEmpty()) return false
+        val root = File(path)
+        val exe = File(root, "${WowClientDownloader.FLAVOR_DIR}/WowB-ARM64.exe")
+        val dataDir = File(root, "Data")
+        return exe.exists() &&
+            (dataDir.exists() && dataDir.listFiles()?.isNotEmpty() == true) &&
+            File(root, ".build.info").exists() &&
+            (!root.exists() || root.list() != null || CustomGameScanner.hasStoragePermission(context, path))
     }
 
     fun findGameRoot(picked: File): File? =

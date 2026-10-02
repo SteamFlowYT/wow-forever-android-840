@@ -104,7 +104,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -226,7 +228,9 @@ fun PluviaMain(
         viewModel.uiEvent.collect { event ->
             when (event) {
                 MainViewModel.MainUiEvent.LaunchApp -> {
-                    navController.navigate(PluviaScreen.XServer.route)
+                    if (state.showBootingSplash) {
+                        navController.navigate(PluviaScreen.XServer.route)
+                    }
                 }
 
                 is MainViewModel.MainUiEvent.ExternalGameLaunch -> {
@@ -485,12 +489,40 @@ fun PluviaMain(
                 message = msgDialogState.message,
             )
 
+            var initialSplash by remember {
+                mutableStateOf(app.gamenative.ui.screen.wow.WoWLauncherState.shouldAutoLaunch && app.gamenative.ui.screen.wow.GamePath.isReady(context))
+            }
+            var preLaunchJob by remember { mutableStateOf<Job?>(null) }
+
+            DisposableEffect(Unit) {
+                val clearSplash: (app.gamenative.events.AndroidEvent.ClearBootingSplash) -> Unit = { initialSplash = false }
+                val forceClose: (app.gamenative.events.AndroidEvent.ForceCloseApp) -> Unit = {
+                    initialSplash = false
+                    preLaunchJob?.cancel()
+                    preLaunchJob = null
+                    app.gamenative.ui.screen.wow.WoWLauncherState.shouldAutoLaunch = false
+                }
+                app.gamenative.PluviaApp.events.on<app.gamenative.events.AndroidEvent.ClearBootingSplash, Unit>(clearSplash)
+                app.gamenative.PluviaApp.events.on<app.gamenative.events.AndroidEvent.ForceCloseApp, Unit>(forceClose)
+                onDispose {
+                    app.gamenative.PluviaApp.events.off<app.gamenative.events.AndroidEvent.ClearBootingSplash, Unit>(clearSplash)
+                    app.gamenative.PluviaApp.events.off<app.gamenative.events.AndroidEvent.ForceCloseApp, Unit>(forceClose)
+                }
+            }
+
             Box(modifier = Modifier.zIndex(10f)) {
                 BootingSplash(
-                    visible = state.showBootingSplash,
-                    text = state.bootingSplashText,
+                    visible = state.showBootingSplash || initialSplash,
+                    text = if (state.showBootingSplash) state.bootingSplashText else "Booting into World of Warcraft...",
                     heroImageUrl = state.bootingSplashHeroImageUrl,
-                    onAbort = { viewModel.abortBoot() },
+                    onAbort = {
+                        initialSplash = false
+                        preLaunchJob?.cancel()
+                        preLaunchJob = null
+                        viewModel.setLoadingDialogVisible(false)
+                        app.gamenative.ui.screen.wow.WoWLauncherState.shouldAutoLaunch = false
+                        viewModel.abortBoot()
+                    },
                 )
             }
 
@@ -509,7 +541,8 @@ fun PluviaMain(
                             viewModel.setDiagnostics(false)
                             viewModel.setDebugRun(false)
                             viewModel.setOffline(true)
-                            preLaunchApp(
+                            preLaunchJob?.cancel()
+                            preLaunchJob = preLaunchApp(
                                 context = context,
                                 appId = appId,
                                 setLoadingDialogVisible = viewModel::setLoadingDialogVisible,
@@ -620,14 +653,12 @@ fun preLaunchApp(
     setMessageDialogState: (MessageDialogState) -> Unit,
     onSuccess: KFunction2<Context, String, Unit>,
     bootToContainer: Boolean = false,
-) {
+): Job {
     setLoadingDialogVisible(true)
-    // TODO: add a way to cancel
-    // TODO: add fail conditions
 
     val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
 
-    CoroutineScope(Dispatchers.IO).launch {
+    return CoroutineScope(Dispatchers.IO).launch {
         if (LaunchReadiness.pending) {
             setLoadingDialogVisible(false)
             (context as? Activity)?.let { LaunchReadiness.resolve(it) }
@@ -782,6 +813,7 @@ fun preLaunchApp(
         containerManager.activateContainer(container)
 
         setLoadingDialogVisible(false)
+        if (!isActive) return@launch
         onSuccess(context, appId)
     }
 }

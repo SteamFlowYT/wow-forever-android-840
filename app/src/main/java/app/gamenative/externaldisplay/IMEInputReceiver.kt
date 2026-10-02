@@ -7,6 +7,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
+import com.winlator.xserver.Pointer
 import com.winlator.xserver.XServer
 import timber.log.Timber
 
@@ -21,6 +22,22 @@ class IMEInputReceiver(
     private val xServer: XServer,
     private val displayContext: Context = context,
 ) : FrameLayout(context) {
+
+    val screenWidth: Int get() = xServer.screenInfo.width.toInt()
+    val screenHeight: Int get() = xServer.screenInfo.height.toInt()
+
+    suspend fun clickAt(x: Int, y: Int) {
+        xServer.injectPointerMove(x, y)
+        kotlinx.coroutines.delay(60)
+        xServer.injectPointerButtonPress(Pointer.Button.BUTTON_LEFT)
+        kotlinx.coroutines.delay(80)
+        xServer.injectPointerButtonRelease(Pointer.Button.BUTTON_LEFT)
+        kotlinx.coroutines.delay(60)
+    }
+
+    fun movePointerTo(x: Int, y: Int) {
+        xServer.injectPointerMove(x, y)
+    }
 
     companion object {
         private val SHIFTED_SYMBOLS = setOf(

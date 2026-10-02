@@ -120,7 +120,6 @@ import app.gamenative.utils.ExecutableSelectionUtils
 import app.gamenative.utils.LsfgQuickMenuHelper
 import app.gamenative.utils.LsfgVkManager
 import app.gamenative.utils.PerfSampler
-import app.gamenative.utils.GameCompatibilityService
 import app.gamenative.utils.downloader.DXWrapperDownloader
 import app.gamenative.utils.downloader.GraphicsDriverDownloader
 import app.gamenative.utils.PreInstallSteps
@@ -595,6 +594,7 @@ fun XServerScreen(
     var debugGestureName by remember { mutableStateOf("") }
     var debugGestureKey by remember { mutableIntStateOf(0) }
     var keyboardRequestedFromOverlay by remember { mutableStateOf(false) }
+    var bnetSignInRequestedFromOverlay by remember { mutableStateOf(false) }
     var shouldForceResumeOnMenuClose by remember { mutableStateOf(false) }
     var showQuickMenu by remember { mutableStateOf(false) }
     var quickMenuToolsVisible by remember { mutableStateOf(false) }
@@ -1146,8 +1146,9 @@ fun XServerScreen(
         if (!keyboardRequestedFromOverlay) {
             imeInputReceiver?.hideKeyboard()
         }
-        shouldForceResumeOnMenuClose = keyboardRequestedFromOverlay && manualResumeMode && !keepPausedForEditor
+        shouldForceResumeOnMenuClose = (keyboardRequestedFromOverlay || bnetSignInRequestedFromOverlay) && manualResumeMode && !keepPausedForEditor
         keyboardRequestedFromOverlay = false
+        bnetSignInRequestedFromOverlay = false
         showQuickMenu = false
     }
 
@@ -1188,6 +1189,7 @@ fun XServerScreen(
     val onQuickMenuItemSelected: (Int) -> Boolean = { itemId ->
         when (itemId) {
             QuickMenuAction.BATTLE_NET_SIGN_IN -> {
+                bnetSignInRequestedFromOverlay = true
                 app.gamenative.ui.screen.wow.BattleNetSignIn.requested.value = true
                 true
             }
@@ -2166,6 +2168,7 @@ fun XServerScreen(
 
                     setupExecutor.submit {
                         try {
+                            if (isExiting.get()) return@submit
                             val containerManager = ContainerManager(context)
                             // Configure WinHandler with container's input API settings
                             val handler = getxServer().winHandler
@@ -2276,6 +2279,7 @@ fun XServerScreen(
 
                             changeWineAudioDriver(xServerState.value.audioDriver, container, ImageFs.find(context))
                             setImagefsContainerVariant(context, container)
+                            if (isExiting.get()) return@submit
                             PluviaApp.xEnvironment = setupXEnvironment(
                                 context,
                                 appId,
@@ -2793,7 +2797,12 @@ fun XServerScreen(
             )
         }
 
-        app.gamenative.ui.screen.wow.BattleNetSignInHost(onBeforeTyping = dismissOverlayMenu)
+        app.gamenative.ui.screen.wow.BattleNetSignInHost(
+            onBeforeTyping = {
+                dismissOverlayMenu()
+                forceResumeIfSuspended()
+            },
+        )
 
         QuickMenu(
             isVisible = showQuickMenu,
@@ -3891,10 +3900,12 @@ private fun setupXEnvironment(
                 containerVariantChanged = containerVariantChanged,
                 onError = onGameLaunchError
             )
-            if (preInstallCommands.isNotEmpty()) {
-                PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Installing prerequisites..."))
-            } else {
-                PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Launching game..."))
+            if (!isExiting.get()) {
+                if (preInstallCommands.isNotEmpty()) {
+                    PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Installing prerequisites..."))
+                } else {
+                    PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Launching game..."))
+                }
             }
         }
 

@@ -58,17 +58,17 @@ WOW_SRC="/Applications/World of Warcraft" tools/sync_wow_to_device.sh
 
 ### 3. Play
 
-Open **WoW Forever** and press **Play**. The first launch downloads the ARM64 game client and installs the Windows environment, which takes a few minutes and needs an internet connection. After that it boots straight into the game.
+Open **WoW Forever**. Once your game files are configured, the app automatically launches straight into the game. The first launch downloads the ARM64 game client and installs the Windows environment, which takes a few minutes and needs an internet connection.
 
-The app creates a basic `WTF/Config.wtf` on first run and always sets `gxApi "D3D11"`, the renderer that works with DXVK.
+- **Setup screen:** to access folder settings, forget credentials, or check environment status, hold **Start + Select + L2 + R2** (or tap the back button) during the loading splash to cancel boot and return to the setup screen.
+- The app creates a basic `WTF/Config.wtf` on first run and always sets `gxApi "D3D11"`, the renderer that works with DXVK.
 
 ### Controls and signing in
 
 - **Controller:** built-in handheld controllers work in-game. WoW's own gamepad mode handles the mapping.
 - **In-game menu:** press Back (the button or the back swipe gesture) to open the sidebar. It has **Keyboard**, **Sign in to Battle.net**, on-screen controls, performance overlay and **Exit**.
 - **Keyboard:** the sidebar's **Keyboard** opens the Android keyboard. On dual-screen devices like the Thor it appears on the bottom screen. Symbols like `@` work, and so does pasting.
-- **Sign in to Battle.net:** select WoW's email field first; with a controller, selecting the field highlights it. Then pick **Sign in to Battle.net**. The first time, the app asks for your email and password and saves them on the device, encrypted with the Android Keystore. After that the same button types them in for you. Nothing is sent anywhere. To remove the saved login, use **Forget Saved Login** on the launcher screen.
-  - If the email field isn't highlighted, the email gets added after whatever is already in it. Clear the field first.
+- **Sign in to Battle.net:** open the sidebar and tap **Sign in to Battle.net**. The app automatically focuses the login fields, enters your credentials, and submits. The first time, it prompts for your email and password and stores them encrypted with the Android Keystore on-device only. Nothing is sent anywhere. To remove the saved login, use **Forget Saved Login** on the launcher setup screen.
   - Authenticator codes still have to be entered by hand.
 
 ---
@@ -97,7 +97,6 @@ To update:
 | *CAS system was unable to initialize: no active install info entries* | `.build.info` or `_classic_beta_/.flavor.info` is missing on the device. |
 | *No realms available* / no servers listed | The device client is out of date. Blizzard patched the beta. Run the update steps above. |
 | Keyboard doesn't appear | Force-stop Gboard (Settings → Apps → Gboard → Force stop) and open **Keyboard** again. It can get stuck on the second screen. |
-| Sign in types into the wrong field | Select WoW's email field before using **Sign in to Battle.net**. |
 | Returns to the launcher after "Launching Game…" | Check the files under `_classic_beta_/Errors/` on the device. |
 | Handheld frontend (e.g. Cocoon) shows the wrong icon | The frontend cached an old icon. Set it with the frontend's "Edit App Artwork", or reinstall the app. |
 

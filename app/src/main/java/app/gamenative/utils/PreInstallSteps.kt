@@ -25,10 +25,6 @@ object PreInstallSteps {
 
     private val steps: List<PreInstallStep> = listOf(
         VcRedistStep,
-        PhysXStep,
-        OpenALStep,
-        XnaFrameworkStep,
-        UbisoftConnectStep,
     )
 
     private var stepsProvider: () -> List<PreInstallStep> = { steps }

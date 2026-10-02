@@ -62,9 +62,19 @@ object BattleNetSignIn {
     }
 
     suspend fun typeInto(receiver: IMEInputReceiver, login: Login) {
+        val centerX = receiver.screenWidth / 2
+        val emailY = (receiver.screenHeight * 0.505f).toInt()
+        val passwordY = (receiver.screenHeight * 0.648f).toInt()
+
+        receiver.clickAt(centerX, passwordY)
+        delay(200)
+        receiver.clickAt(centerX, emailY)
+        delay(200)
         receiver.typeText(login.email + "\t")
         delay(KEY_SETTLE_MS)
         receiver.typeText(login.password + "\n")
+        delay(KEY_SETTLE_MS)
+        receiver.movePointerTo(0, 0)
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -163,5 +173,5 @@ fun BattleNetSignInHost(onBeforeTyping: () -> Unit) {
     }
 }
 
-private const val MENU_CLOSE_MS = 400L
+private const val MENU_CLOSE_MS = 600L
 private const val DIALOG_SETTLE_MS = 300L
