@@ -230,12 +230,9 @@ android {
 dependencies {
     implementation(libs.material)
 
-    // Chrome Custom Tabs for GOG OAuth
-    implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
 
     implementation(libs.okhttp)
-    implementation(libs.okhttp.dnsoverhttps)
 
     // Split Modules
     implementation(libs.bundles.google)
@@ -249,10 +246,6 @@ dependencies {
     // Jetpack Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
-    implementation(libs.landscapist.coil)
-    implementation(libs.media3.exoplayer)
-    implementation(libs.media3.exoplayer.hls)
-    implementation(libs.media3.ui)
     debugImplementation(libs.androidx.ui.tooling)
 
     // Support

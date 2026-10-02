@@ -115,17 +115,12 @@ import app.gamenative.ui.widget.PerformanceHudView
 import app.gamenative.utils.AssetUtils
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.downloader.CoreDriverDownloader
-import app.gamenative.utils.CustomGameScanner
-import app.gamenative.utils.ExecutableSelectionUtils
 import app.gamenative.utils.LsfgQuickMenuHelper
 import app.gamenative.utils.LsfgVkManager
 import app.gamenative.utils.PerfSampler
 import app.gamenative.utils.downloader.DXWrapperDownloader
 import app.gamenative.utils.downloader.GraphicsDriverDownloader
-import app.gamenative.utils.PreInstallSteps
 import app.gamenative.utils.BrightnessManager
-import app.gamenative.enums.Marker
-import app.gamenative.utils.MarkerUtils
 import app.gamenative.utils.WineMono
 import app.gamenative.utils.WineMsiCache
 import app.gamenative.utils.downloader.WinComponentDownloader
@@ -3656,64 +3651,6 @@ private fun assignTaskAffinity(
     }
 }
 
-private fun shiftXEnvironmentToContext(
-    context: Context,
-    xEnvironment: XEnvironment,
-    xServer: XServer,
-): XEnvironment {
-    val environment = XEnvironment(context, xEnvironment.imageFs)
-    val rootPath = xEnvironment.imageFs.rootDir.path
-    xEnvironment.getComponent<SysVSharedMemoryComponent>(SysVSharedMemoryComponent::class.java).stop()
-    val sysVSharedMemoryComponent = SysVSharedMemoryComponent(
-        xServer,
-        UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.SYSVSHM_SERVER_PATH),
-    )
-    // val sysVSharedMemoryComponent = xEnvironment.getComponent<SysVSharedMemoryComponent>(SysVSharedMemoryComponent::class.java)
-    // sysVSharedMemoryComponent.connectToXServer(xServer)
-    environment.addComponent(sysVSharedMemoryComponent)
-    xEnvironment.getComponent<XServerComponent>(XServerComponent::class.java).stop()
-    val xServerComponent = XServerComponent(xServer, UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.XSERVER_PATH))
-    // val xServerComponent = xEnvironment.getComponent<XServerComponent>(XServerComponent::class.java)
-    // xServerComponent.connectToXServer(xServer)
-    environment.addComponent(xServerComponent)
-    xEnvironment.getComponent<NetworkInfoUpdateComponent>(NetworkInfoUpdateComponent::class.java).stop()
-    val networkInfoComponent = NetworkInfoUpdateComponent()
-    environment.addComponent(networkInfoComponent)
-    // environment.addComponent(xEnvironment.getComponent<NetworkInfoUpdateComponent>(NetworkInfoUpdateComponent::class.java))
-    val alsaComponent = xEnvironment.getComponent<ALSAServerComponent>(ALSAServerComponent::class.java)
-    if (alsaComponent != null) {
-        environment.addComponent(alsaComponent)
-    }
-    val pulseComponent = xEnvironment.getComponent<PulseAudioComponent>(PulseAudioComponent::class.java)
-    if (pulseComponent != null) {
-        environment.addComponent(pulseComponent)
-    }
-    val micComponent = xEnvironment.getComponent<MicrophoneComponent>(MicrophoneComponent::class.java)
-    if (micComponent != null) {
-        environment.addComponent(micComponent)
-    }
-    var virglComponent: VirGLRendererComponent? =
-        xEnvironment.getComponent<VirGLRendererComponent>(VirGLRendererComponent::class.java)
-    if (virglComponent != null) {
-        virglComponent.stop()
-        virglComponent = VirGLRendererComponent(
-            xServer,
-            UnixSocketConfig.createSocket(rootPath, UnixSocketConfig.VIRGL_SERVER_PATH),
-        )
-        environment.addComponent(virglComponent)
-    }
-    environment.addComponent(xEnvironment.getComponent<GlibcProgramLauncherComponent>(GlibcProgramLauncherComponent::class.java))
-
-    FileUtils.clear(XEnvironment.getTmpDir(context))
-    sysVSharedMemoryComponent.start()
-    xServerComponent.start()
-    networkInfoComponent.start()
-    virglComponent?.start()
-    // environment.startEnvironmentComponents()
-
-    return environment
-}
-
 private fun setupXEnvironment(
     context: Context,
     appId: String,
@@ -3830,36 +3767,13 @@ private fun setupXEnvironment(
         )
     }
 
-    var preInstallCommands: List<PreInstallSteps.PreInstallCommand> = emptyList()
-    var gameExecutable = ""
-
-    if (container != null) {
-        if (container.startupSelection == Container.STARTUP_SELECTION_AGGRESSIVE) {
-            if (container.containerVariant.equals(Container.BIONIC)){
-                Timber.d("Incorrect startup selection detected. Reverting to essential startup selection")
-                container.startupSelection = Container.STARTUP_SELECTION_ESSENTIAL
-                container.putExtra("startupSelection", java.lang.String.valueOf(Container.STARTUP_SELECTION_ESSENTIAL))
-                container.saveData()
-            } else {
-                xServer.winHandler.killProcess("services.exe");
-            }
-        }
-
         val wow64Mode = container.isWoW64Mode
-        guestProgramLauncherComponent.setContainer(container);
-        guestProgramLauncherComponent.setWineInfo(xServerState.value.wineInfo);
-        gameExecutable = "wine explorer /desktop=shell," + xServer.screenInfo + " " +
+        guestProgramLauncherComponent.setContainer(container)
+        guestProgramLauncherComponent.setWineInfo(xServerState.value.wineInfo)
+        val gameExecutable = "wine explorer /desktop=shell," + xServer.screenInfo + " " +
             getWineStartCommand(context, appId, container, bootToContainer, testGraphics, envVars, guestProgramLauncherComponent, gameSource) +
             (if (container.execArgs.isNotEmpty()) " " + container.execArgs else "")
-        preInstallCommands = PreInstallSteps.getPreInstallCommands(
-            container,
-            appId,
-            gameSource,
-            xServer.screenInfo.toString(),
-            containerVariantChanged,
-        )
-        guestProgramLauncherComponent.guestExecutable =
-            preInstallCommands.firstOrNull()?.executable ?: gameExecutable
+        guestProgramLauncherComponent.guestExecutable = gameExecutable
         guestProgramLauncherComponent.isWoW64Mode = wow64Mode
         // Set steam type for selecting appropriate box64rc
         guestProgramLauncherComponent.setSteamType(container.getSteamType())
@@ -3901,11 +3815,7 @@ private fun setupXEnvironment(
                 onError = onGameLaunchError
             )
             if (!isExiting.get()) {
-                if (preInstallCommands.isNotEmpty()) {
-                    PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Installing prerequisites..."))
-                } else {
-                    PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Launching game..."))
-                }
+                PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Launching game..."))
             }
         }
 
@@ -3919,7 +3829,6 @@ private fun setupXEnvironment(
                 }
             }
         }
-    }
 
     val environment = XEnvironment(context, imageFs)
     environment.addComponent(
@@ -3998,41 +3907,7 @@ private fun setupXEnvironment(
         PluviaApp.events.emit(AndroidEvent.GuestProgramTerminated)
     }
 
-    fun chainPreInstallSteps(remaining: List<PreInstallSteps.PreInstallCommand>) {
-        (guestProgramLauncherComponent as? BionicProgramLauncherComponent)?.setFEXCorePreset(
-            if (remaining.firstOrNull()?.marker == Marker.GOG_SCRIPT_INSTALLED) FEXCorePreset.STABILITY else container.fexCorePreset,
-        )
-        if (remaining.isEmpty()) {
-            guestProgramLauncherComponent.setGuestExecutable(gameExecutable)
-            guestProgramLauncherComponent.setTerminationCallback(gameTerminationCallback)
-            return
-        }
-        guestProgramLauncherComponent.setGuestExecutable(remaining.first().executable)
-        guestProgramLauncherComponent.setTerminationCallback { _ ->
-            val current = remaining.first()
-            PreInstallSteps.markStepDone(container, current.marker)
-            guestProgramLauncherComponent.setPreUnpack(null)
-            try {
-                guestProgramLauncherComponent.execShellCommand("wineserver -k")
-            } catch (e: Exception) {
-                Timber.w(e, "wineserver -k between pre-install steps (non-fatal)")
-            }
-            val nextRemaining = remaining.drop(1)
-            if (nextRemaining.isEmpty()) {
-                PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Launching game..."))
-            } else {
-                PluviaApp.events.emit(AndroidEvent.SetBootingSplashText("Installing prerequisites..."))
-            }
-            chainPreInstallSteps(nextRemaining)
-            guestProgramLauncherComponent.start()
-        }
-    }
-
-    if (preInstallCommands.isNotEmpty()) {
-        chainPreInstallSteps(preInstallCommands)
-    } else {
-        guestProgramLauncherComponent.setTerminationCallback(gameTerminationCallback)
-    }
+    guestProgramLauncherComponent.setTerminationCallback(gameTerminationCallback)
 
     environment.addComponent(guestProgramLauncherComponent)
 
@@ -4061,18 +3936,6 @@ private fun setupXEnvironment(
         Timber.i("Env Vars (Final Guest): ${EnvVarRedaction.redact(envVars)}")   // Log the actual env vars being passed
         Timber.i("Guest Executable: ${guestProgramLauncherComponent.guestExecutable}") // Log the command
         Timber.i("---------------------------")
-    }
-
-    if (container.wineVersion.lowercase().contains("proton-10") && container.getExtra("xaudioDllsExtracted").isEmpty()) {
-        try {
-            // Only proton 10 can apply this fix; gated so it only runs once per container
-            // (cleared by applyGeneralPatches when it wipes system32 DLLs).
-            XAudioUtils.replaceXAudioDllsFromRedistributable(context, guestProgramLauncherComponent, appId)
-            container.putExtra("xaudioDllsExtracted", "1")
-            container.saveData()
-        } catch (e: Exception) {
-            Timber.tag("replaceXAudioDllsFromRedistributable").w(e, "Failed to replace XAudio DLLs; continuing launch")
-        }
     }
 
     try {
@@ -4132,21 +3995,7 @@ private fun getWineStartCommand(
         }
 
         if (executablePath.isEmpty()) {
-            // Attempt auto-detection only when we have the physical folder path
-            if (gameFolderPath == null) {
-                Timber.tag("XServerScreen").e("Could not find A: drive for Custom Game: $appId")
-                return "winhandler.exe \"wfm.exe\""
-            }
-            val auto = CustomGameScanner.findUniqueExeRelativeToFolder(gameFolderPath!!)
-            if (auto != null) {
-                Timber.tag("XServerScreen").i("Auto-selected Custom Game exe: $auto")
-                executablePath = auto
-                container.executablePath = auto
-                container.saveData()
-            } else {
-                Timber.tag("XServerScreen").w("No unique executable found for Custom Game: $appId")
-                return "winhandler.exe \"wfm.exe\""
-            }
+            return "winhandler.exe \"wfm.exe\""
         }
 
         if (ContainerUtils.isAbsoluteWindowsPath(executablePath)) {
@@ -4667,7 +4516,6 @@ private suspend fun extractDXWrapperFiles(
             } else {
                 extractDXWrapperComponent(context, dxwrapper, windowsDir, onExtractFileListener)
             }
-            extractDXWrapperComponent(context, "d8vk-${DefaultVersion.D8VK}", windowsDir, onExtractFileListener)
         }
     }
 }

@@ -32,8 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import app.gamenative.ui.components.getPathFromTreeUri
-import app.gamenative.utils.CustomGameScanner
+import app.gamenative.utils.StorageUtils
 import com.winlator.container.Container
 import com.winlator.container.ContainerManager
 import com.winlator.contents.AdrenotoolsManager
@@ -86,7 +85,7 @@ fun WoWForeverScreen(
         exeExists = exe.exists()
         dataExists = dataDir.exists() && (dataDir.listFiles()?.isNotEmpty() == true)
         buildInfoExists = File(root, ".build.info").exists()
-        hasStorageAccess = !root.exists() || root.list() != null || CustomGameScanner.hasStoragePermission(context, gamePath)
+        hasStorageAccess = !root.exists() || root.list() != null || StorageUtils.hasStoragePermission(context, gamePath)
 
         return exeExists && dataExists && buildInfoExists && hasStorageAccess
     }
@@ -117,7 +116,7 @@ fun WoWForeverScreen(
     }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        val path = getPathFromTreeUri(context, uri) ?: return@rememberLauncherForActivityResult
+        val path = StorageUtils.getPathFromTreeUri(context, uri) ?: return@rememberLauncherForActivityResult
         val root = GamePath.findGameRoot(File(path))
         if (root == null) {
             errorMessage = "No .build.info found in $path. Pick the folder that contains .build.info and Data/."
@@ -353,7 +352,7 @@ fun WoWForeverScreen(
                 } else {
                     if (!hasStorageAccess) {
                         OutlinedButton(
-                            onClick = { CustomGameScanner.requestManageExternalStoragePermission(context) },
+                            onClick = { StorageUtils.requestManageExternalStoragePermission(context) },
                             modifier = Modifier.fillMaxWidth(0.85f).height(48.dp),
                             shape = RoundedCornerShape(14.dp),
                         ) {
@@ -460,7 +459,7 @@ object GamePath {
         return exe.exists() &&
             (dataDir.exists() && dataDir.listFiles()?.isNotEmpty() == true) &&
             File(root, ".build.info").exists() &&
-            (!root.exists() || root.list() != null || CustomGameScanner.hasStoragePermission(context, path))
+            (!root.exists() || root.list() != null || StorageUtils.hasStoragePermission(context, path))
     }
 
     fun findGameRoot(picked: File): File? =

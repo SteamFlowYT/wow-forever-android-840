@@ -13,7 +13,6 @@ import app.gamenative.enums.AppTheme
 import app.gamenative.events.AndroidEvent
 import app.gamenative.ui.enums.Orientation
 import java.util.EnumSet
-import app.gamenative.utils.CustomGameScanner
 import app.gamenative.ui.data.MainState
 import app.gamenative.ui.screen.PluviaScreen
 import app.gamenative.ui.util.SnackbarManager
@@ -239,26 +238,7 @@ class MainViewModel @Inject constructor(
             setShowBootingSplash(true)
             PluviaApp.events.emit(AndroidEvent.SetAllowedOrientation(PrefManager.allowedOrientation))
 
-            val heroUrl = withContext(Dispatchers.IO) {
-                when (ContainerUtils.extractGameSourceFromContainerId(appId)) {
-                    GameSource.CUSTOM_GAME -> {
-                        val folderPath = CustomGameScanner.getFolderPathFromAppId(appId) ?: return@withContext ""
-                        val folder = java.io.File(folderPath)
-                        val heroFile = folder.listFiles()?.firstOrNull { file ->
-                            file.isFile &&
-                                file.name.startsWith("steamgriddb_hero", ignoreCase = true) &&
-                                !file.name.contains("grid_", ignoreCase = true) &&
-                                (file.name.endsWith(".png", ignoreCase = true) ||
-                                    file.name.endsWith(".jpg", ignoreCase = true) ||
-                                    file.name.endsWith(".webp", ignoreCase = true))
-                        }
-                        heroFile?.let { android.net.Uri.fromFile(it).toString() } ?: ""
-                    }
-                    else -> ""
-                }
-            }
-            if (!isActive) return@launch
-            setBootingSplashHeroImageUrl(heroUrl)
+            setBootingSplashHeroImageUrl("")
 
             val apiJob = viewModelScope.async(Dispatchers.IO) {
                 ContainerUtils.getOrCreateContainer(context, appId)

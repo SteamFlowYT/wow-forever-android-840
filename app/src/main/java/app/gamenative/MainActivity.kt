@@ -2,7 +2,6 @@ package app.gamenative
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -13,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.OrientationEventListener
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -26,13 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.lifecycleScope
-import coil.ImageLoader
-import coil.disk.DiskCache
-import coil.memory.MemoryCache
-import coil.intercept.Interceptor
-import coil.request.CachePolicy
 import app.gamenative.BuildConfig
 import app.gamenative.PrefManager
 import app.gamenative.events.AndroidEvent
@@ -40,37 +32,23 @@ import app.gamenative.ui.PluviaMain
 import app.gamenative.ui.enums.Orientation
 import app.gamenative.ui.util.LocalSnackbarHostController
 import app.gamenative.ui.util.SnackbarHostController
-import app.gamenative.utils.AnimatedPngDecoder
 import app.gamenative.data.GameSource
 import app.gamenative.powercontrol.PowerManager
 import app.gamenative.utils.ContainerUtils
-import app.gamenative.utils.IconDecoder
 import app.gamenative.utils.IntentLaunchManager
 import app.gamenative.utils.LocaleHelper
 import app.gamenative.ui.util.SnackbarManager
-import com.skydoves.landscapist.coil.LocalCoilImageLoader
 import com.winlator.core.AppUtils
 import com.winlator.inputcontrols.ControllerManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import java.util.EnumSet
-import kotlin.math.abs
-import okio.Path.Companion.toOkioPath
 import timber.log.Timber
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     companion object {
         private var totalIndex = 0
-
-        private var currentOrientationChangeValue: Int = 0
-        private var availableOrientations: EnumSet<Orientation> = EnumSet.of(Orientation.UNSPECIFIED)
-
-        fun isHeadset(context: Context): Boolean =
-            context.packageManager.hasSystemFeature("android.hardware.vr.headtracking") ||
-                Build.MANUFACTURER.equals("Oculus", true) ||
-                Build.MANUFACTURER.equals("Meta", true) ||
-                Build.MANUFACTURER.equals("Pico", true)
 
         // Store pending launch request to be processed after UI is ready
         @Volatile
@@ -114,15 +92,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val onSetAllowedOrientation: (AndroidEvent.SetAllowedOrientation) -> Unit = {
-        // Log.d("MainActivity", "Requested allowed orientations of $it")
-        availableOrientations = it.orientations
-        setOrientationTo(currentOrientationChangeValue, availableOrientations)
-    }
-
-    private val onStartOrientator: (AndroidEvent.StartOrientator) -> Unit = {
-        // TODO: When rotating the device on login screen:
-        //  StrictMode policy violation: android.os.strictmode.LeakedClosableViolation: A resource was acquired at attached stack trace but never released. See java.io.Closeable for information on avoiding resource leaks.
-        startOrientator()
+        setOrientationTo(it.orientations)
     }
 
     private val onEndProcess: (AndroidEvent.EndProcess) -> Unit = {
@@ -146,17 +116,7 @@ class MainActivity : ComponentActivity() {
 
     private var index = totalIndex++
 
-    // Add a property to keep a reference to the orientation sensor listener
-    private var orientationSensorListener: OrientationEventListener? = null
     private var desiredSystemUiVisible: Boolean = false
-
-    // Cover-art image loader; held so we can drop its GPU-backed bitmap cache when
-    // the library is backgrounded (e.g. while a game is running) to free memory.
-    private var appImageLoader: ImageLoader? = null
-
-    private fun releaseImageCaches() {
-        appImageLoader?.memoryCache?.clear()
-    }
 
     override fun attachBaseContext(newBase: Context) {
         // Initialize PrefManager to read language setting
@@ -175,35 +135,6 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
-
-        try {
-            val drawable = androidx.core.content.res.ResourcesCompat.getDrawable(resources, R.mipmap.ic_launcher, theme)
-            val bitmap = if (drawable != null) {
-                val bmp = android.graphics.Bitmap.createBitmap(
-                    drawable.intrinsicWidth.coerceAtLeast(192),
-                    drawable.intrinsicHeight.coerceAtLeast(192),
-                    android.graphics.Bitmap.Config.ARGB_8888
-                )
-                val canvas = android.graphics.Canvas(bmp)
-                drawable.setBounds(0, 0, canvas.width, canvas.height)
-                drawable.draw(canvas)
-                bmp
-            } else null
-            @Suppress("DEPRECATION")
-            setTaskDescription(android.app.ActivityManager.TaskDescription(getString(R.string.app_name), bitmap))
-        } catch (_: Throwable) {}
-
-        if (isHeadset(this)) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            android.view.InputDevice.getDeviceIds().forEach { id ->
-                val d = android.view.InputDevice.getDevice(id) ?: return@forEach
-                val axes = d.motionRanges.joinToString(",") { mr -> "axis=${mr.axis}(min=${mr.min},max=${mr.max})" }
-                Timber.tag("HeadsetInput").i(
-                    "id=$id name='${d.name}' sources=0x%08x vendor=0x%04x product=0x%04x isGamepad=%b axes=[$axes]",
-                    d.sources, d.vendorId, d.productId, d.sources and android.view.InputDevice.SOURCE_GAMEPAD == android.view.InputDevice.SOURCE_GAMEPAD
-                )
-            }
-        }
 
         // stale keepAlive from a prior crash/swipe — no container is actually running
         if (PluviaApp.keepAlive && PluviaApp.xEnvironment == null) {
@@ -226,54 +157,13 @@ class MainActivity : ComponentActivity() {
         // Prevent device from sleeping while app is open
         AppUtils.keepScreenOn(this)
 
-        // startOrientator() // causes memory leak since activity restarted every orientation change
         PluviaApp.events.on<AndroidEvent.SetSystemUIVisibility, Unit>(onSetSystemUi)
-        PluviaApp.events.on<AndroidEvent.StartOrientator, Unit>(onStartOrientator)
         PluviaApp.events.on<AndroidEvent.SetAllowedOrientation, Unit>(onSetAllowedOrientation)
         PluviaApp.events.on<AndroidEvent.EndProcess, Unit>(onEndProcess)
 
         setContent {
-            val context = LocalContext.current
-            val imageLoader = remember {
-                val memoryCache = MemoryCache.Builder(context)
-                    .maxSizePercent(0.1)
-                    .strongReferencesEnabled(true)
-                    .build()
-
-                val diskCache = DiskCache.Builder()
-                    .maxSizePercent(0.03)
-                    .directory(context.cacheDir.resolve("image_cache").toOkioPath())
-                    .build()
-
-                // val logger = if (BuildConfig.DEBUG) DebugLogger() else null
-
-                ImageLoader.Builder(context)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .memoryCache(memoryCache)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .diskCache(diskCache)
-                    .components {
-                        // serve cached images when device has no internet
-                        add(Interceptor { chain ->
-                            val request = if (!NetworkMonitor.hasInternet.value) {
-                                chain.request.newBuilder()
-                                    .networkCachePolicy(CachePolicy.DISABLED)
-                                    .build()
-                            } else {
-                                chain.request
-                            }
-                            chain.proceed(request)
-                        })
-                        add(IconDecoder.Factory())
-                        add(AnimatedPngDecoder.Factory())
-                    }
-                    .build()
-                    .also { appImageLoader = it }
-            }
-
             val snackbarController = remember { SnackbarHostController() }
             CompositionLocalProvider(
-                LocalCoilImageLoader provides imageLoader,
                 LocalSnackbarHostController provides snackbarController,
             ) {
                 PluviaMain()
@@ -345,7 +235,6 @@ class MainActivity : ComponentActivity() {
         controllerInputManager = null
 
         PluviaApp.events.off<AndroidEvent.SetSystemUIVisibility, Unit>(onSetSystemUi)
-        PluviaApp.events.off<AndroidEvent.StartOrientator, Unit>(onStartOrientator)
         PluviaApp.events.off<AndroidEvent.SetAllowedOrientation, Unit>(onSetAllowedOrientation)
         PluviaApp.events.off<AndroidEvent.EndProcess, Unit>(onEndProcess)
     }
@@ -368,7 +257,6 @@ class MainActivity : ComponentActivity() {
         PowerManager.resume()
         PluviaApp.isActivityInForeground = true
 
-        lifecycleScope.launch { app.gamenative.launch.LaunchReadiness.refresh() }
         // Re-apply immersive mode to ensure fullscreen persists
         if (!desiredSystemUiVisible) {
             applyImmersiveMode()
@@ -419,29 +307,6 @@ class MainActivity : ComponentActivity() {
             }
         }
         super.onPause()
-    }
-
-    // Add cleanup when app is backgrounded
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        // TRIM_MEMORY_UI_HIDDEN fires when the app's UI goes fully hidden; the higher
-        // levels fire under system memory pressure. In all these cases free the
-        // cover-art cache so the running game has more headroom.
-        if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
-            releaseImageCaches()
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        orientationSensorListener?.disable()
-        orientationSensorListener = null
-        // Library UI is no longer visible (e.g. a game is now in the foreground) —
-        // drop the cover-art bitmap cache so its GPU memory is reclaimed for the game.
-        // Not on a config change (rotation), where we want to keep it warm.
-        if (!isChangingConfigurations && hasReadyGameLifecycleState("stop")) {
-            releaseImageCaches()
-        }
     }
 
     // override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -499,29 +364,6 @@ class MainActivity : ComponentActivity() {
         // Log.d("MainActivity", "Requested orientation: $requestedOrientation => ${Orientation.fromActivityInfoValue(requestedOrientation)}")
     }
 
-    private fun startOrientator() {
-        // Log.d("MainActivity$index", "Orientator starting up")
-
-        // create and register the orientation listener
-        orientationSensorListener = object : OrientationEventListener(this) {
-            override fun onOrientationChanged(orientation: Int) {
-                currentOrientationChangeValue = if (orientation != ORIENTATION_UNKNOWN) {
-                    orientation
-                } else {
-                    currentOrientationChangeValue
-                }
-                setOrientationTo(currentOrientationChangeValue, availableOrientations)
-            }
-        }
-
-        // enable if possible
-        orientationSensorListener?.takeIf { it.canDetectOrientation() }?.enable()
-    }
-
-    /**
-     * Apply immersive mode for a full-screen experience.
-     * Must be called in multiple lifecycle methods to ensure bars stay hidden.
-     */
     private fun applyImmersiveMode() {
         if (desiredSystemUiVisible) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -540,19 +382,16 @@ class MainActivity : ComponentActivity() {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Use WindowInsetsController for Android 11+
-            window.setDecorFitsSystemWindows(false) // TODO: look into the proper way of doing this
+            window.setDecorFitsSystemWindows(false)
             window.insetsController?.let { controller ->
                 controller.hide(
                     android.view.WindowInsets.Type.statusBars() or
                         android.view.WindowInsets.Type.navigationBars(),
                 )
-                // Allow transient bars to appear on swipe from edge
                 controller.systemBarsBehavior =
                     android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
-            // Legacy approach for older Android versions
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (
                 android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -567,69 +406,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        // Re-apply immersive mode when window gains focus to ensure bars stay hidden
         if (hasFocus && !desiredSystemUiVisible) {
             applyImmersiveMode()
         }
     }
 
-    private fun setOrientationTo(orientation: Int, conformTo: EnumSet<Orientation>) {
-        if (isHeadset(this)) {
-            if (requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            }
-            return
-        }
-        // Log.d("MainActivity$index", "Setting orientation to conform")
-
-        // reverse direction of orientation
-        val adjustedOrientation = 360 - orientation
-
-        // if our available orientations are empty then assume unspecified
-        val orientations = conformTo.ifEmpty { EnumSet.of(Orientation.UNSPECIFIED) }
-
-        var inRange = orientations
-            .filter { it.angleRanges.any { it.contains(adjustedOrientation) } }
-            .toTypedArray()
-
-        if (inRange.isEmpty()) {
-            // none of the available orientations conform to the reported orientation
-            // so set it to the original orientations in preparation for finding the
-            // nearest conforming orientation
-            inRange = orientations.toTypedArray()
-        }
-
-        // find the nearest orientation to the reported
-        val distances = orientations.map {
-            it to it.angleRanges.minOf { angleRange ->
-                angleRange.minOf { angle ->
-                    // since 0 can be represented as 360 and vice versa
-                    if (adjustedOrientation == 0 || adjustedOrientation == 360) {
-                        minOf(abs(angle), abs(angle - 360))
-                    } else {
-                        abs(angle - adjustedOrientation)
-                    }
-                }
-            }
-        }
-
-        val nearest = distances.minBy { it.second }
-
-        // set the requested orientation to the nearest if it is not already as long as it is nearer than what is currently set
-        val currentOrientationDist = distances
-            .firstOrNull { it.first.activityInfoValue == requestedOrientation }
-            ?.second
-            ?: Int.MAX_VALUE
-
-        if (requestedOrientation != nearest.first.activityInfoValue && currentOrientationDist > nearest.second) {
-            Timber.d(
-                "$adjustedOrientation => currentOrientation(" +
-                    "${Orientation.fromActivityInfoValue(requestedOrientation)}) " +
-                    "!= nearestOrientation(${nearest.first}) && " +
-                    "currentDistance($currentOrientationDist) > nearestDistance(${nearest.second})",
-            )
-
-            requestedOrientation = nearest.first.activityInfoValue
+    private fun setOrientationTo(conformTo: EnumSet<Orientation>) {
+        requestedOrientation = when {
+            conformTo.contains(Orientation.PORTRAIT) -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            conformTo.contains(Orientation.LANDSCAPE) && conformTo.contains(Orientation.REVERSE_LANDSCAPE) ->
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            conformTo.contains(Orientation.LANDSCAPE) -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            conformTo.contains(Orientation.REVERSE_LANDSCAPE) -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 }

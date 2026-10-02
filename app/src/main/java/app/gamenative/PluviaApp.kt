@@ -11,11 +11,8 @@ import androidx.compose.runtime.setValue
 import androidx.navigation.NavController
 import app.gamenative.events.EventDispatcher
 import app.gamenative.powercontrol.PowerManager
-import app.gamenative.service.DownloadService
 import app.gamenative.ui.screen.xserver.RadialMenuCoordinator
-import app.gamenative.utils.ContainerMigrator
 import app.gamenative.utils.IntentLaunchManager
-import app.gamenative.utils.downloader.ContainerFilesDownloader
 import java.io.File
 import com.google.android.play.core.splitcompat.SplitCompatApplication
 import com.winlator.container.Container
@@ -36,8 +33,6 @@ typealias NavChangedListener = NavController.OnDestinationChangedListener
 
 @HiltAndroidApp
 class PluviaApp : SplitCompatApplication() {
-
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
@@ -60,23 +55,10 @@ class PluviaApp : SplitCompatApplication() {
             Timber.plant(ReleaseTree())
         }
 
-        NetworkMonitor.init(this)
-
-        // Init our custom crash handler.
         CrashHandler.initialize(this)
 
         // Init our datastore preferences.
         PrefManager.init(this)
-
-        DownloadService.populateDownloadService(this)
-
-        appScope.launch {
-            ContainerMigrator.migrateLegacyContainersIfNeeded(
-                context = applicationContext,
-                onProgressUpdate = null,
-                onComplete = null
-            )
-        }
 
         // Clear any stale temporary config overrides from previous app sessions
         try {

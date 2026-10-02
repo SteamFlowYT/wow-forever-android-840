@@ -584,28 +584,8 @@ object ContainerUtils {
          // Determine game source
         val gameSource = extractGameSourceFromContainerId(appId)
 
-        // Set up container drives to include app
         val defaultDrives = PrefManager.drives
-        val drives = when (gameSource) {
-            GameSource.CUSTOM_GAME -> {
-                // For Custom Games, find the game folder and map it to A: drive
-                val gameFolderPath = CustomGameScanner.getFolderPathFromAppId(appId)
-                if (gameFolderPath != null) {
-                    // Check if A: is already in defaultDrives, if not use it, otherwise use next available
-                    val drive: Char = if (defaultDrives.contains("A:")) {
-                        Container.getNextAvailableDriveLetter(defaultDrives)
-                    } else {
-                        'A'
-                    }
-                    "$defaultDrives$drive:$gameFolderPath"
-                } else {
-                    Timber.w("Could not find folder path for Custom Game: $appId")
-                    defaultDrives
-                }
-            }
-
-            else -> defaultDrives
-        }
+        val drives = defaultDrives
         Timber.d("Prepared container drives: $drives")
 
         // Prepare container data with default DX wrapper to start
@@ -649,22 +629,7 @@ object ContainerUtils {
             }
         }
 
-        // For Custom Games, pre-populate executablePath if there's exactly one valid .exe
-        if (gameSource == GameSource.CUSTOM_GAME) {
-            try {
-                val gameFolderPath = CustomGameScanner.getFolderPathFromAppId(appId)
-                if (!gameFolderPath.isNullOrEmpty() && container.executablePath.isEmpty()) {
-                    val auto = CustomGameScanner.findUniqueExeRelativeToFolder(gameFolderPath)
-                    if (auto != null) {
-                        Timber.i("Auto-selected Custom Game exe during container creation: $auto")
-                        container.executablePath = auto
-                        container.saveData()
-                    }
-                }
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to auto-select exe during Custom Game creation for $appId")
-            }
-        }
+
 
 
         // Initialize container with default/custom config or best config
@@ -775,19 +740,8 @@ object ContainerUtils {
         // and GOG games have a drive mapped to the GOG games directory
         // and Epic games have a drive mapped to the Epic game directory
         val gameSource = extractGameSourceFromContainerId(appId)
-        val gameFolderPath: String? = when (gameSource) {
-            GameSource.CUSTOM_GAME -> {
-                CustomGameScanner.getFolderPathFromAppId(appId)
-            }
-
-            else -> null
-        }
-
-        val resolvedGameFolderPath = if (gameSource == GameSource.CUSTOM_GAME) {
-            CustomGameScanner.migrateToInternalStorage(gameFolderPath)
-        } else {
-            StorageUtils.resolveLegacyGameDir(gameFolderPath)
-        }
+        val gameFolderPath: String? = null
+        val resolvedGameFolderPath = StorageUtils.resolveLegacyGameDir(gameFolderPath)
 
         if (resolvedGameFolderPath != null) {
             // Check if A: drive is already mapped to the correct path
@@ -960,21 +914,8 @@ object ContainerUtils {
         -> true
     }
 
-    /**
-     * Resolves the display name for a game from its container ID,
-     * looking up the appropriate store service.
-     */
     fun resolveGameName(containerId: String): String {
-        val gameSource = extractGameSourceFromContainerId(containerId)
-        val gameId = extractGameIdFromContainerId(containerId)
-        return when (gameSource) {
-            GameSource.CUSTOM_GAME -> {
-                val customAppId = "${GameSource.CUSTOM_GAME.name}_$gameId"
-                CustomGameScanner.getFolderPathFromAppId(customAppId)
-                    ?.let { File(it).name }
-            }
-            else -> null
-        } ?: "Unknown"
+        return if (containerId.contains("wow", ignoreCase = true)) "World of Warcraft" else containerId
     }
 
     /**

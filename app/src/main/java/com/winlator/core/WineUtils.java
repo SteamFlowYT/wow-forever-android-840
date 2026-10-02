@@ -67,8 +67,6 @@ public abstract class WineUtils {
             if (drive[0].equals("A")) {
                 if (path.contains("/Steam/steamapps/common/")) {
                     gameDirectoryPath = path;
-                } else if (PrefManager.INSTANCE.getCustomGameManualFolders().contains(path)) {
-                    gameDirectoryPath = path;
                 }
             }
         }

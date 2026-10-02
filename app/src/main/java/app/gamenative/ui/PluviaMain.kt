@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.FileProvider
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -54,7 +53,6 @@ import androidx.navigation.navArgument
 import app.gamenative.BuildConfig
 import app.gamenative.Constants
 import app.gamenative.MainActivity
-import app.gamenative.NetworkMonitor
 import app.gamenative.PluviaApp
 import app.gamenative.PrefManager
 import app.gamenative.R
@@ -81,9 +79,7 @@ import app.gamenative.ui.util.LocalSnackbarHostController
 import app.gamenative.ui.util.SnackbarManager
 import app.gamenative.utils.Net
 import app.gamenative.utils.ContainerUtils
-import app.gamenative.utils.CustomGameScanner
 import app.gamenative.utils.IntentLaunchManager
-import app.gamenative.utils.LaunchDependencies
 import com.google.android.play.core.splitcompat.SplitCompat
 import com.winlator.container.Container
 import com.winlator.container.ContainerData
@@ -130,21 +126,10 @@ private sealed class GameResolutionResult {
 private fun resolveGameAppId(context: Context, appId: String): GameResolutionResult {
     val gameSource = ContainerUtils.extractGameSourceFromContainerId(appId)
     val gameId = ContainerUtils.extractGameIdFromContainerId(appId)
-    val isInstalled = CustomGameScanner.isGameInstalled(gameId)
-
-    if (!isInstalled) {
-        return GameResolutionResult.NotFound(
-            gameId = gameId,
-            originalAppId = appId,
-        )
-    }
-
-    val isCustomGame = gameSource == GameSource.CUSTOM_GAME
-
     return GameResolutionResult.Success(
         finalAppId = appId,
         gameId = gameId,
-        isCustomGame = isCustomGame,
+        isCustomGame = gameSource == GameSource.CUSTOM_GAME,
     )
 }
 
@@ -280,10 +265,8 @@ fun PluviaMain(
 
             PluviaApp.onDestinationChangedListener = NavController.OnDestinationChangedListener { _, destination, _ ->
                 Timber.i("onDestinationChanged to ${destination.route}")
-                // in order not to trigger the screen changed launch effect
                 viewModel.setCurrentScreen(destination.route)
             }
-            PluviaApp.events.emit(AndroidEvent.StartOrientator)
         } else {
             PluviaApp.onDestinationChangedListener?.let {
                 navController.removeOnDestinationChangedListener(it)
@@ -706,8 +689,7 @@ fun preLaunchApp(
 
         // When "Open container" is used we boot to desktop/file manager only — skip executable check
         if (!bootToContainer) {
-            // Verify we have a launch executable for all platforms before proceeding (fail fast, avoid black screen)
-            val effectiveExe = CustomGameScanner.getLaunchExecutable(container)
+            val effectiveExe = container.executablePath
             if (effectiveExe.isBlank()) {
                 Timber.tag("preLaunchApp").w("Cannot launch $appId: no executable found (game source: $gameSource)")
                 setLoadingDialogVisible(false)
@@ -730,40 +712,10 @@ fun preLaunchApp(
         SplitCompat.install(context)
 
         try {
-            LaunchDependencies().ensureLaunchDependencies(
-                context = context,
-                container = container,
-                gameSource = gameSource,
-                gameId = gameId,
-                setLoadingMessage = setLoadingMessage,
-                setLoadingProgress = setLoadingProgress,
-            )
-        } catch (e: Exception) {
-            Timber.tag("preLaunchApp").e(e, "ensureLaunchDependencies failed")
-            setLoadingDialogVisible(false)
-            setMessageDialogState(
-                MessageDialogState(
-                    visible = true,
-                    type = DialogType.SYNC_FAIL,
-                    title = context.getString(R.string.launch_dependency_failed_title),
-                    message = e.message ?: context.getString(R.string.launch_dependency_failed_message),
-                    dismissBtnText = context.getString(R.string.ok),
-                ),
-            )
-            return@launch
-        }
-
-        try {
-            val imageFsArchive = if (container.containerVariant.equals(Container.BIONIC)) "imagefs_bionic.txz" else "imagefs_gamenative.txz"
+            val imageFsArchive = "imagefs_bionic.txz"
             if (!File(context.filesDir, imageFsArchive).exists() && context.assets.list("")?.contains(imageFsArchive) != true) {
                 setLoadingMessage("Downloading first-time files")
                 Net.fetchFileWithFallback(imageFsArchive, File(context.filesDir, imageFsArchive), setLoadingProgress)
-            }
-            if (container.containerVariant.equals(Container.GLIBC) &&
-                !File(context.filesDir, "imagefs_patches_gamenative.tzst").exists()
-            ) {
-                setLoadingMessage("Downloading Wine")
-                Net.fetchFileWithFallback("imagefs_patches_gamenative.tzst", File(context.filesDir, "imagefs_patches_gamenative.tzst"), setLoadingProgress)
             }
         } catch (e: Exception) {
             Timber.tag("preLaunchApp").e(e, "File download failed")

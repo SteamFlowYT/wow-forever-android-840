@@ -173,7 +173,9 @@ object PowerManager {
             AdaptiveFpsCapController.start(containerDir, tunerLogDirectory())
         }
 
-        appContext.let { PerformanceMetricsCollector.start(it) }
+        if (isProfilePowerControlEnabled() || currentProfile.adaptiveFpsCapEnabled) {
+            appContext.let { PerformanceMetricsCollector.start(it) }
+        }
 
         isGameStarted = true
     }
