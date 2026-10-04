@@ -55,67 +55,15 @@ object PerformanceMetricsCollector {
         private set
 
     fun start(context: Context, sessionStartMillis: Long = System.currentTimeMillis()) {
-        if (isRunning) return
-
-        val appContext = context.applicationContext
-        displayRefreshRate = readDisplayRefreshRate(appContext)
-        cpuSampler.reset()
-        gpuSampler.reset()
-        sampleCount = 0L
-        paused = false
-        FrameTimeRing.start()
-        PowerTelemetry.start()
-        openLog(appContext, sessionStartMillis)
-
-        val gpuPaths = SystemMetricsSources.gpuUsagePaths()
-        Timber.tag(TAG).i(
-            "Collector started: frameSource=frame-hook interval=%dms window=%dms refresh=%.1fHz gpu=[%s] cpuTemp=%s gpuTemp=%s log=%s",
-            SAMPLE_INTERVAL_MS,
-            FRAME_WINDOW_MS,
-            displayRefreshRate,
-            gpuPaths.joinToString(),
-            SystemMetricsSources.cpuTempPaths().firstOrNull() ?: "none",
-            SystemMetricsSources.gpuTempPaths().firstOrNull() ?: "none",
-            sessionLog.path ?: "none",
-        )
-
-        isRunning = true
-        samplingJob = scope.launch {
-            while (isActive) {
-                if (!paused) {
-                    runCatching { sampleOnce() }
-                        .onFailure { Timber.tag(TAG).e(it, "Sampling cycle failed") }
-                }
-                delay(SAMPLE_INTERVAL_MS)
-            }
-        }
     }
 
     fun stop() {
-        if (!isRunning) return
-
-        isRunning = false
-        paused = false
-        samplingJob?.cancel()
-        samplingJob = null
-        FrameTimeRing.stop()
-        closeLog()
-        PowerManager.latestMetrics = null
-        Timber.tag(TAG).i("Collector stopped after %d samples", sampleCount)
     }
 
     fun pause() {
-        if (!isRunning || paused) return
-        paused = true
-        Timber.tag(TAG).i("Collector paused")
     }
 
     fun resume() {
-        if (!isRunning || !paused) return
-        cpuSampler.reset()
-        gpuSampler.reset()
-        paused = false
-        Timber.tag(TAG).i("Collector resumed")
     }
 
     private fun sampleOnce() {

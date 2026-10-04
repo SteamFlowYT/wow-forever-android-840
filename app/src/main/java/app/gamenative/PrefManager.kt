@@ -65,27 +65,8 @@ object PrefManager {
     private lateinit var dataStore: DataStore<Preferences>
 
     fun init(context: Context) {
-        dataStore = context.datastore
-
-        // Note: Should remove after a few release versions. we've moved to encrypted values.
-        val oldPassword = stringPreferencesKey("password")
-        removePref(oldPassword)
-
-        val oldAccessToken = stringPreferencesKey("access_token")
-        val oldRefreshToken = stringPreferencesKey("refresh_token")
-        getPref(oldAccessToken, "").let {
-            if (it.isNotEmpty()) {
-                Timber.i("Converting old access token to encrypted")
-                accessToken = it
-                removePref(oldAccessToken)
-            }
-        }
-        getPref(oldRefreshToken, "").let {
-            if (it.isNotEmpty()) {
-                Timber.i("Converting old refresh token to encrypted")
-                refreshToken = it
-                removePref(oldRefreshToken)
-            }
+        if (!::dataStore.isInitialized) {
+            dataStore = context.datastore
         }
     }
 

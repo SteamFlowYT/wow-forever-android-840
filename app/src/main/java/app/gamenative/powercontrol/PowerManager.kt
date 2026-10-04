@@ -168,15 +168,6 @@ object PowerManager {
         if (isProfilePowerControlEnabled()) {
             startPowerControl()
         }
-
-        if (currentProfile.adaptiveFpsCapEnabled) {
-            AdaptiveFpsCapController.start(containerDir, tunerLogDirectory())
-        }
-
-        if (isProfilePowerControlEnabled() || currentProfile.adaptiveFpsCapEnabled) {
-            appContext.let { PerformanceMetricsCollector.start(it) }
-        }
-
         isGameStarted = true
     }
 
@@ -186,26 +177,7 @@ object PowerManager {
      */
     fun initialize(context: Context) {
         appContext = context.applicationContext
-        driver = when {
-            SamsungPerformanceDriver.isSamsungDevice() -> {
-                val samsungDriver = SamsungPerformanceDriver(appContext)
-                if (samsungDriver.isDriverSupported()) {
-                    Timber.tag("PowerManager").i("Using Samsung Performance Driver")
-                    samsungDriver
-                } else {
-                    Timber.tag("PowerManager").w("Samsung device detected but Performance SDK not available")
-                    NoOpPerformanceDriver()
-                }
-            }
-            PServerDriver.checkPServerAvailability() -> {
-                Timber.tag("PowerManager").i("Using PServer Driver")
-                PServerDriver(appContext)
-            }
-            else -> {
-                Timber.tag("PowerManager").w("No performance driver available")
-                NoOpPerformanceDriver()
-            }
-        }
+        driver = NoOpPerformanceDriver()
         currentProfile = driver.getDefaultProfile()
     }
 

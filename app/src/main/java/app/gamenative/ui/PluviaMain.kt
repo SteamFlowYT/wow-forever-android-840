@@ -80,7 +80,6 @@ import app.gamenative.ui.util.SnackbarManager
 import app.gamenative.utils.Net
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.IntentLaunchManager
-import com.google.android.play.core.splitcompat.SplitCompat
 import com.winlator.container.Container
 import com.winlator.container.ContainerData
 import com.winlator.container.ContainerManager
@@ -707,9 +706,6 @@ fun preLaunchApp(
             }
         }
 
-
-        // set up Ubuntu file system — download required files and install
-        SplitCompat.install(context)
 
         try {
             val imageFsArchive = "imagefs_bionic.txz"

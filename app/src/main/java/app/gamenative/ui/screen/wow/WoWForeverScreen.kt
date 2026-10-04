@@ -151,15 +151,18 @@ fun WoWForeverScreen(
                 }
                 ensureGameConfig(File(gamePath))
 
-                try {
-                    WowClientDownloader.download(File(gamePath)) { msg ->
-                        scope.launch(Dispatchers.Main) { statusText = msg }
+                val arm64Exe = File(gamePath, "${WowClientDownloader.FLAVOR_DIR}/WowB-ARM64.exe")
+                if (!arm64Exe.exists()) {
+                    try {
+                        WowClientDownloader.download(File(gamePath)) { msg ->
+                            scope.launch(Dispatchers.Main) { statusText = msg }
+                        }
+                    } catch (e: Exception) {
+                        if (!arm64Exe.exists()) {
+                            throw IllegalStateException("Couldn't download WowB-ARM64.exe: ${e.message}", e)
+                        }
+                        Timber.w(e, "Client update check failed, launching the existing WowB-ARM64.exe")
                     }
-                } catch (e: Exception) {
-                    if (!File(gamePath, "${WowClientDownloader.FLAVOR_DIR}/WowB-ARM64.exe").exists()) {
-                        throw IllegalStateException("Couldn't download WowB-ARM64.exe: ${e.message}", e)
-                    }
-                    Timber.w(e, "Client update check failed, launching the existing WowB-ARM64.exe")
                 }
 
                 // 2. Configure container

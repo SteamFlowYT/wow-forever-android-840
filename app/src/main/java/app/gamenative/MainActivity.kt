@@ -150,8 +150,6 @@ class MainActivity : ComponentActivity() {
         controllerInputManager = getSystemService(Context.INPUT_SERVICE) as InputManager
         controllerInputManager?.registerInputDeviceListener(controllerDeviceListener, null)
 
-        ContainerUtils.setContainerDefaults(applicationContext)
-
         handleLaunchIntent(intent)
 
         // Prevent device from sleeping while app is open

@@ -12,9 +12,7 @@ import androidx.navigation.NavController
 import app.gamenative.events.EventDispatcher
 import app.gamenative.powercontrol.PowerManager
 import app.gamenative.ui.screen.xserver.RadialMenuCoordinator
-import app.gamenative.utils.IntentLaunchManager
-import java.io.File
-import com.google.android.play.core.splitcompat.SplitCompatApplication
+import android.app.Application
 import com.winlator.container.Container
 import com.winlator.inputcontrols.InputControlsManager
 import com.winlator.widget.InputControlsView
@@ -32,45 +30,22 @@ import kotlinx.coroutines.launch
 typealias NavChangedListener = NavController.OnDestinationChangedListener
 
 @HiltAndroidApp
-class PluviaApp : SplitCompatApplication() {
+class PluviaApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
         instance = this
         android.system.Os.setenv("EVSHIM_BASE_PATH", filesDir.absolutePath, true)
 
-        preloadSystemLibraries()
-
-        // Allows to find resource streams not closed within GameNative and JavaSteam
         if (BuildConfig.DEBUG) {
-            StrictMode.setVmPolicy(
-                StrictMode.VmPolicy.Builder()
-                    .detectLeakedClosableObjects()
-                    .penaltyLog()
-                    .build(),
-            )
-
             Timber.plant(Timber.DebugTree())
         } else {
             Timber.plant(ReleaseTree())
         }
 
         CrashHandler.initialize(this)
-
-        // Init our datastore preferences.
         PrefManager.init(this)
-
-        // Clear any stale temporary config overrides from previous app sessions
-        try {
-            IntentLaunchManager.clearAllTemporaryOverrides()
-            Timber.d("[PluviaApp]: Cleared temporary config overrides from previous session")
-        } catch (e: Exception) {
-            Timber.e(e, "[PluviaApp]: Failed to clear temporary config overrides")
-        }
-
-        Thread {
-            PowerManager.initialize(this)
-        }.start()
+        PowerManager.initialize(this)
     }
 
     companion object {
@@ -203,33 +178,4 @@ class PluviaApp : SplitCompatApplication() {
         }
     }
 
-    /**
-     * Some native libraries we dlopen at runtime (libsteamclient.so via SteamBootstrap,
-     * the lsfg-vk layer, etc.) depend on `libjpeg.so`, which isn't on every device's
-     * dynamic linker search path. Pre-load the system copy here with RTLD_GLOBAL
-     * semantics (System.load is global) so all subsequent dlopens find its symbols.
-     *
-     * Single place for all: runs once in Application.onCreate before any other
-     * native lib is loaded by this process. Failures are non-fatal — devices that
-     * don't have the file (or have it elsewhere) just fall through.
-     */
-    private fun preloadSystemLibraries() {
-        val is64 = android.os.Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
-        val candidates = if (is64) {
-            listOf("/system/lib64/libjpeg.so", "/system/lib/libjpeg.so")
-        } else {
-            listOf("/system/lib/libjpeg.so", "/system/lib64/libjpeg.so")
-        }
-        for (path in candidates) {
-            if (!File(path).exists()) continue
-            try {
-                System.load(path)
-                Timber.i("[PluviaApp]: Preloaded $path")
-                return
-            } catch (e: Throwable) {
-                Timber.w(e, "[PluviaApp]: System.load($path) failed")
-            }
-        }
-        Timber.w("[PluviaApp]: Could not preload system libjpeg.so (none of the candidate paths worked)")
-    }
 }

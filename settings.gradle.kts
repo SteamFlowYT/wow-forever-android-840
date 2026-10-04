@@ -21,4 +21,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "wow-forever-android"
 include(":app")
-include(":ubuntufs")

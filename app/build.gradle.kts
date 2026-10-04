@@ -49,10 +49,6 @@ android {
         versionName = "1.3.0"
 
         buildConfigField("boolean", "GOLD", "false")
-        fun secret(name: String) =
-            project.findProperty(name) as String? ?: System.getenv(name) ?: ""
-
-        buildConfigField("String", "STEAMGRIDDB_API_KEY", "\"${secret("STEAMGRIDDB_API_KEY")}\"")
         val iconValue = "@mipmap/ic_launcher"
         val iconRoundValue = "@mipmap/ic_launcher_round"
         manifestPlaceholders.putAll(
@@ -167,7 +163,6 @@ android {
         // the release-only lintVital pass fails on 150+ ExtraTranslation errors.
         disable += "ExtraTranslation"
     }
-    dynamicFeatures += setOf(":ubuntufs")
 
     // Configure Assets to be used in different variants
     sourceSets {
@@ -233,9 +228,6 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
 
     implementation(libs.okhttp)
-
-    // Split Modules
-    implementation(libs.bundles.google)
 
     // Winlator
     implementation(libs.bundles.winlator)

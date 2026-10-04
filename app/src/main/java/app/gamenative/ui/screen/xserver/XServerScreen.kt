@@ -117,7 +117,6 @@ import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.downloader.CoreDriverDownloader
 import app.gamenative.utils.LsfgQuickMenuHelper
 import app.gamenative.utils.LsfgVkManager
-import app.gamenative.utils.PerfSampler
 import app.gamenative.utils.downloader.DXWrapperDownloader
 import app.gamenative.utils.downloader.GraphicsDriverDownloader
 import app.gamenative.utils.BrightnessManager
@@ -186,7 +185,6 @@ import com.winlator.xenvironment.components.PulseAudioComponent
 import com.winlator.xenvironment.components.SysVSharedMemoryComponent
 import com.winlator.xenvironment.components.VirGLRendererComponent
 import com.winlator.xenvironment.components.VortekRendererComponent
-import com.winlator.xenvironment.components.WineRequestComponent
 import com.winlator.xenvironment.components.XServerComponent
 import com.winlator.xserver.Keyboard
 import com.winlator.xserver.Property
@@ -225,9 +223,7 @@ import kotlin.math.roundToInt
 import kotlin.text.lowercase
 import com.winlator.PrefManager as WinlatorPrefManager
 
-// Always re-extract drivers and DXVK on every launch to handle cases of container corruption
-// where games randomly stop working. Set to false once corruption issues are resolved.
-private const val ALWAYS_REEXTRACT = true
+private const val ALWAYS_REEXTRACT = false
 
 // Guard to prevent duplicate game_exited events when multiple exit triggers fire simultaneously
 private val isExiting = AtomicBoolean(false)
@@ -2294,21 +2290,6 @@ fun XServerScreen(
                             // Autostart performance driver after environment is set up
                             PowerManager.autoStart(container.rootDir)
 
-                            if (debugRun) {
-                                PerfSampler.start(
-                                    context,
-                                    fpsProvider = {
-                                        val raw = frameRating?.currentFPS ?: 0f
-                                        if (isLsfgAvailable && lsfgMultiplier >= 2) {
-                                            LsfgVkManager.readMeasuredFps(container) ?: raw
-                                        } else {
-                                            raw
-                                        }
-                                    },
-                                    drives = container.drives,
-                                )
-                            }
-
                             // Pin game process to performance cores (CPUs 4-7)
                             container.executablePath
                                 .substringAfterLast('/')
@@ -3911,8 +3892,6 @@ private fun setupXEnvironment(
 
     environment.addComponent(guestProgramLauncherComponent)
 
-    environment.addComponent(WineRequestComponent())
-
     FEXCoreManager.ensureAppConfigOverrides(context)
 
     // Log container settings before starting
@@ -4058,8 +4037,6 @@ private fun exit(
         Timber.i("Exit already in progress, ignoring duplicate request")
         return
     }
-
-    PerfSampler.halt()
 
     // Store session data in container metadata
     frameRating?.let { rating ->
