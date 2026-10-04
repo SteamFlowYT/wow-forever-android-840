@@ -22,6 +22,11 @@ object WowClientDownloader {
         val localVersion: String,
         val remoteVersion: String,
         val isOutdated: Boolean,
+        val remoteBuildConfig: String = "",
+        val remoteCdnConfig: String = "",
+        val product: String = "wow_classic_beta",
+        val remoteCdnHosts: List<String> = emptyList(),
+        val remoteCdnPath: String = "tpr/wow",
     )
 
     fun checkVersion(gameRoot: File): VersionCheckResult? {
@@ -79,6 +84,28 @@ object WowClientDownloader {
             return null
         }
         val remoteBuildKey = remoteRow["BuildConfig"] ?: ""
+        val remoteCdnKey = remoteRow["CDNConfig"] ?: ""
+
+        val cdnsRequest = Request.Builder()
+            .url("http://us.patch.battle.net:1119/$product/cdns")
+            .build()
+        val cdnsText = runCatching {
+            client.newCall(cdnsRequest).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+        }.getOrNull()
+
+        val cdnsLines = cdnsText?.lines()?.filter { it.isNotBlank() && !it.startsWith("#") } ?: emptyList()
+        val cdnsRow = if (cdnsLines.size >= 2) {
+            val cdnsHeader = cdnsLines.first().split("|").map { it.substringBefore("!") }
+            cdnsLines.drop(1).map { cdnsHeader.zip(it.split("|")).toMap() }.firstOrNull { it["Name"] == "us" }
+                ?: cdnsLines.drop(1).map { cdnsHeader.zip(it.split("|")).toMap() }.firstOrNull()
+        } else null
+
+        val cdnHosts = cdnsRow?.get("Hosts")?.split(" ")?.filter { it.isNotBlank() }
+            ?: row["CDN Hosts"]?.split(" ")?.filter { it.isNotBlank() }
+            ?: listOf("level3.blizzard.com", "us.cdn.blizzard.com")
+        val cdnPath = cdnsRow?.get("Path") ?: row["CDN Path"] ?: "tpr/wow"
 
         val isOutdated = localVersion != remoteVersion || (remoteBuildKey.isNotBlank() && localBuildKey != remoteBuildKey)
         Timber.i("checkVersion: localVersion=$localVersion, remoteVersion=$remoteVersion, isOutdated=$isOutdated")
@@ -86,46 +113,143 @@ object WowClientDownloader {
             localVersion = localVersion,
             remoteVersion = remoteVersion,
             isOutdated = isOutdated,
+            remoteBuildConfig = remoteBuildKey,
+            remoteCdnConfig = remoteCdnKey,
+            product = product,
+            remoteCdnHosts = cdnHosts,
+            remoteCdnPath = cdnPath,
         )
     }
 
-    fun download(gameRoot: File, onStatus: (String) -> Unit) {
-        val row = activeBuild(File(gameRoot, ".build.info"))
+    fun updateGame(gameRoot: File, target: VersionCheckResult, onStatus: (String) -> Unit) {
         val cdn = Cdn(
-            hosts = row.getValue("CDN Hosts").split(" ").filter { it.isNotBlank() },
-            path = row.getValue("CDN Path"),
+            hosts = target.remoteCdnHosts.ifEmpty { listOf("level3.blizzard.com", "us.cdn.blizzard.com") },
+            path = target.remoteCdnPath.ifEmpty { "tpr/wow" },
         )
-        onStatus("Reading build ${row["Version"].orEmpty()} manifest...")
-        val buildConfig = parseConfig(String(cdn.require("config", row.getValue("Build Key"))))
+        onStatus("Fetching build ${target.remoteVersion} manifest...")
+        val buildConfigRaw = cdn.require("config", target.remoteBuildConfig)
+        val buildConfig = parseConfig(String(buildConfigRaw))
+
+        val cdnConfigRaw = if (target.remoteCdnConfig.isNotBlank()) {
+            cdn.require("config", target.remoteCdnConfig)
+        } else null
+
+        val configDir = File(gameRoot, "Data/config/${target.remoteBuildConfig.substring(0, 2)}/${target.remoteBuildConfig.substring(2, 4)}")
+        configDir.mkdirs()
+        File(configDir, target.remoteBuildConfig).writeBytes(buildConfigRaw)
+
+        if (cdnConfigRaw != null && target.remoteCdnConfig.length >= 4) {
+            val cdnDir = File(gameRoot, "Data/config/${target.remoteCdnConfig.substring(0, 2)}/${target.remoteCdnConfig.substring(2, 4)}")
+            cdnDir.mkdirs()
+            File(cdnDir, target.remoteCdnConfig).writeBytes(cdnConfigRaw)
+        }
+
         val install = parseInstall(blteDecode(cdn.require("data", buildConfig.getValue("install")[1])))
         val files = install.filter { it.isClientBinary() }
         check(files.isNotEmpty()) { "No Windows ARM64 client files in this build" }
 
         val clientDir = File(gameRoot, FLAVOR_DIR)
         val pending = files.filter { md5Hex(File(clientDir, it.relativePath)) != it.ckey }
-        if (pending.isEmpty()) return
+        if (pending.isNotEmpty()) {
+            onStatus("Looking up client files...")
+            val ekeys = EncodingLookup(cdn, buildConfig.getValue("encoding")[1]).find(pending.map { it.ckey }.toSet())
+            val archives = if (cdnConfigRaw != null) {
+                ArchiveLocator(cdn, gameRoot, parseConfig(String(cdnConfigRaw)).getValue("archives"))
+            } else null
 
-        onStatus("Looking up client files...")
-        val ekeys = EncodingLookup(cdn, buildConfig.getValue("encoding")[1]).find(pending.map { it.ckey }.toSet())
-        val archives by lazy {
-            ArchiveLocator(cdn, gameRoot, parseConfig(String(cdn.require("config", row.getValue("CDN Key")))).getValue("archives"))
+            pending.forEachIndexed { index, entry ->
+                onStatus("Downloading ${entry.name} (${index + 1}/${pending.size})...")
+                val ekey = ekeys[entry.ckey] ?: throw IOException("${entry.name} is missing from the encoding table")
+                val encoded = cdn.fetch("data", ekey) ?: archives?.read(ekey) ?: throw IOException("${entry.name} not found on the CDN")
+                val dest = File(clientDir, entry.relativePath)
+                dest.parentFile?.mkdirs()
+                val temp = File(dest.parentFile, "${dest.name}.download")
+                val digest = MessageDigest.getInstance("MD5")
+                DigestOutputStream(temp.outputStream().buffered(), digest).use { blteDecode(encoded, it) }
+                if (hex(digest.digest(), 0, 16) != entry.ckey) {
+                    temp.delete()
+                    throw IOException("Checksum mismatch for ${entry.name}")
+                }
+                dest.delete()
+                check(temp.renameTo(dest)) { "Could not write ${dest.path}" }
+            }
         }
 
-        pending.forEachIndexed { index, entry ->
-            onStatus("Downloading ${entry.name} (${index + 1}/${pending.size})...")
-            val ekey = ekeys[entry.ckey] ?: throw IOException("${entry.name} is missing from the encoding table")
-            val encoded = cdn.fetch("data", ekey) ?: archives.read(ekey) ?: throw IOException("${entry.name} not found on the CDN")
-            val dest = File(clientDir, entry.relativePath)
-            dest.parentFile?.mkdirs()
-            val temp = File(dest.parentFile, "${dest.name}.download")
-            val digest = MessageDigest.getInstance("MD5")
-            DigestOutputStream(temp.outputStream().buffered(), digest).use { blteDecode(encoded, it) }
-            if (hex(digest.digest(), 0, 16) != entry.ckey) {
-                temp.delete()
-                throw IOException("Checksum mismatch for ${entry.name}")
+        onStatus("Updating build information...")
+        updateBuildInfo(
+            gameRoot = gameRoot,
+            newVersion = target.remoteVersion,
+            newBuildKey = target.remoteBuildConfig,
+            newCdnKey = target.remoteCdnConfig,
+        )
+    }
+
+    private fun updateBuildInfo(gameRoot: File, newVersion: String, newBuildKey: String, newCdnKey: String) {
+        val buildInfo = File(gameRoot, ".build.info")
+        if (!buildInfo.isFile) return
+        val lines = buildInfo.readLines()
+        if (lines.isEmpty()) return
+        val header = lines.first().split("|").map { it.substringBefore("!") }
+        val versionIdx = header.indexOf("Version")
+        val buildKeyIdx = header.indexOf("Build Key")
+        val cdnKeyIdx = header.indexOf("CDN Key")
+        val activeIdx = header.indexOf("Active")
+
+        val updated = lines.mapIndexed { idx, line ->
+            if (idx == 0 || line.isBlank()) return@mapIndexed line
+            val cols = line.split("|").toMutableList()
+            if (activeIdx < 0 || cols.getOrNull(activeIdx) == "1") {
+                if (versionIdx in cols.indices && newVersion.isNotBlank()) cols[versionIdx] = newVersion
+                if (buildKeyIdx in cols.indices && newBuildKey.isNotBlank()) cols[buildKeyIdx] = newBuildKey
+                if (cdnKeyIdx in cols.indices && newCdnKey.isNotBlank()) cols[cdnKeyIdx] = newCdnKey
             }
-            dest.delete()
-            check(temp.renameTo(dest)) { "Could not write ${dest.path}" }
+            cols.joinToString("|")
+        }
+        buildInfo.writeText(updated.joinToString("\n") + "\n")
+    }
+
+    fun download(gameRoot: File, onStatus: (String) -> Unit) {
+        val check = checkVersion(gameRoot)
+        if (check != null && check.remoteBuildConfig.isNotBlank()) {
+            updateGame(gameRoot, check, onStatus)
+        } else {
+            val row = activeBuild(File(gameRoot, ".build.info"))
+            val cdn = Cdn(
+                hosts = row.getValue("CDN Hosts").split(" ").filter { it.isNotBlank() },
+                path = row.getValue("CDN Path"),
+            )
+            onStatus("Reading build ${row["Version"].orEmpty()} manifest...")
+            val buildConfig = parseConfig(String(cdn.require("config", row.getValue("Build Key"))))
+            val install = parseInstall(blteDecode(cdn.require("data", buildConfig.getValue("install")[1])))
+            val files = install.filter { it.isClientBinary() }
+            check(files.isNotEmpty()) { "No Windows ARM64 client files in this build" }
+
+            val clientDir = File(gameRoot, FLAVOR_DIR)
+            val pending = files.filter { md5Hex(File(clientDir, it.relativePath)) != it.ckey }
+            if (pending.isEmpty()) return
+
+            onStatus("Looking up client files...")
+            val ekeys = EncodingLookup(cdn, buildConfig.getValue("encoding")[1]).find(pending.map { it.ckey }.toSet())
+            val archives by lazy {
+                ArchiveLocator(cdn, gameRoot, parseConfig(String(cdn.require("config", row.getValue("CDN Key")))).getValue("archives"))
+            }
+
+            pending.forEachIndexed { index, entry ->
+                onStatus("Downloading ${entry.name} (${index + 1}/${pending.size})...")
+                val ekey = ekeys[entry.ckey] ?: throw IOException("${entry.name} is missing from the encoding table")
+                val encoded = cdn.fetch("data", ekey) ?: archives.read(ekey) ?: throw IOException("${entry.name} not found on the CDN")
+                val dest = File(clientDir, entry.relativePath)
+                dest.parentFile?.mkdirs()
+                val temp = File(dest.parentFile, "${dest.name}.download")
+                val digest = MessageDigest.getInstance("MD5")
+                DigestOutputStream(temp.outputStream().buffered(), digest).use { blteDecode(encoded, it) }
+                if (hex(digest.digest(), 0, 16) != entry.ckey) {
+                    temp.delete()
+                    throw IOException("Checksum mismatch for ${entry.name}")
+                }
+                dest.delete()
+                check(temp.renameTo(dest)) { "Could not write ${dest.path}" }
+            }
         }
     }
 

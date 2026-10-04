@@ -78,6 +78,8 @@ fun WoWForeverScreen(
     var hasStorageAccess by remember { mutableStateOf(true) }
     var versionStatus by remember { mutableStateOf<WowClientDownloader.VersionCheckResult?>(null) }
     var isCheckingVersion by remember { mutableStateOf(false) }
+    var isUpdating by remember { mutableStateOf(false) }
+    var updateStatusText by remember { mutableStateOf("") }
 
     fun checkVersionStatus() {
         if (!File(gamePath, ".build.info").exists()) return
@@ -90,6 +92,7 @@ fun WoWForeverScreen(
             }
         }
     }
+
 
     fun checkFiles(): Boolean {
         val root = File(gamePath)
@@ -234,6 +237,33 @@ fun WoWForeverScreen(
                     errorMessage = e.message ?: "Launch failed"
                     statusText = "Launch failed"
                     isLaunching = false
+                }
+            }
+        }
+    }
+
+    fun performUpdate() {
+        val target = versionStatus ?: return
+        if (isUpdating || isLaunching) return
+        isUpdating = true
+        updateStatusText = "Connecting to Blizzard CDN..."
+        errorMessage = null
+        scope.launch(Dispatchers.IO) {
+            try {
+                WowClientDownloader.updateGame(File(gamePath), target) { msg ->
+                    scope.launch(Dispatchers.Main) { updateStatusText = msg }
+                }
+                withContext(Dispatchers.Main) {
+                    checkFiles()
+                    versionStatus = versionStatus?.copy(isOutdated = false, localVersion = target.remoteVersion)
+                    isUpdating = false
+                    launchGame()
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Error updating game")
+                scope.launch(Dispatchers.Main) {
+                    errorMessage = "Update failed: ${e.message}"
+                    isUpdating = false
                 }
             }
         }
@@ -414,7 +444,7 @@ fun WoWForeverScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Update the game on PC via Battle.net and copy the updated files to this device.",
+                            text = "Tap Update below to download the latest files directly from Blizzard's CDN over Wi-Fi.",
                             fontSize = 11.sp,
                             color = Color(0xFFCBD5E1)
                         )
@@ -429,14 +459,18 @@ fun WoWForeverScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (isLaunching || (isCheckingVersion && WoWLauncherState.shouldAutoLaunch)) {
+                if (isLaunching || isUpdating || (isCheckingVersion && WoWLauncherState.shouldAutoLaunch)) {
                     CircularProgressIndicator(
                         color = Color(0xFFC79C6E),
                         modifier = Modifier.size(36.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = if (isLaunching) statusText else "Checking for game updates...",
+                        text = when {
+                            isUpdating -> updateStatusText
+                            isLaunching -> statusText
+                            else -> "Checking for game updates..."
+                        },
                         fontSize = 13.sp,
                         color = Color(0xFFE2E8F0),
                         textAlign = TextAlign.Center
@@ -466,26 +500,68 @@ fun WoWForeverScreen(
                         Spacer(modifier = Modifier.height(10.dp))
                     }
 
-                    Button(
-                        onClick = { launchGame() },
-                        enabled = !isLaunching && !filesMissing,
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .height(56.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (versionStatus?.isOutdated == true) Color(0xFF8C3A3A) else Color(0xFF9E7138),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = if (versionStatus?.isOutdated == true) "LAUNCH ANYWAY" else "PLAY WORLD OF WARCRAFT",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
+                    if (versionStatus?.isOutdated == true) {
+                        Button(
+                            onClick = { performUpdate() },
+                            enabled = !isLaunching && !isUpdating && !filesMissing,
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF9E7138),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "UPDATE TO ${versionStatus?.remoteVersion}",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        OutlinedButton(
+                            onClick = { launchGame() },
+                            enabled = !isLaunching && !isUpdating && !filesMissing,
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(48.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(
+                                text = "LAUNCH ANYWAY (OUTDATED)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFC8181)
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = { launchGame() },
+                            enabled = !isLaunching && !isUpdating && !filesMissing,
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF9E7138),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "PLAY WORLD OF WARCRAFT",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
