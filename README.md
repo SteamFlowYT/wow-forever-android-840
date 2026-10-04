@@ -31,9 +31,9 @@ Requirements:
 
 Download `WoW-Forever.apk` from the [latest release](https://github.com/jaredgei/wow-forever-android/releases/latest) and install it on your device. The app's package name is `app.wowforever`, so it can sit alongside GameNative or Winlator.
 
-### 2. Copy your WoW game data to the device
+### 2. Copy your WoW game data to the device (one-time setup)
 
-Copy two things from your Battle.net install (on a Mac that's `/Applications/World of Warcraft/`) into a folder on the device. The default is `/storage/emulated/0/WoW Forever/`. Any other folder works too, including one on an SD card.
+Copy two things from your Battle.net install (on a Mac that's `/Applications/World of Warcraft/`) into a folder on the device. The default is `/storage/emulated/0/WoW Forever/`. Any other folder works too, including one on an SD card. You only need to do this **once**; all subsequent game updates are handled directly in-app over Wi-Fi.
 
 ```
 WoW Forever/
@@ -43,14 +43,14 @@ WoW Forever/
 
 - `Data/` is the same on every platform, so a Mac, Windows, or ARM install all work.
 - `.build.info` is a hidden file. Copy it too. Without it the game fails with *"CAS system was unable to initialize"*.
-- You don't need `WowB-ARM64.exe`. Mac and x86 installs don't ship it, so the app downloads the matching Windows ARM64 client from Blizzard's CDN when you press Play, and checks its hashes. It also re-downloads it after a game update.
+- You don't need `WowB-ARM64.exe`. Mac and x86 installs don't ship it, so the app downloads the matching Windows ARM64 client from Blizzard's CDN when you press Play, and checks its hashes.
 - If you used a different folder, or moved it, the launcher shows **Locate Game Files**. Pick the folder that contains `.build.info` and `Data/`. **Change Location** switches it later.
 
 Transfer the files over to a `WoW Forever/` folder on your device. You can do this by:
 
 - **SD Card:** Insert the microSD card into your computer and copy the files over (make sure your file manager shows hidden files so `.build.info` is included).
 - **USB File Transfer:** Connect your device to your computer via USB (in File Transfer / MTP mode) and copy the files directly to internal storage (default: `/storage/emulated/0/WoW Forever/`).
-- **ADB Script:** If you have ADB installed and this repo checked out, you can use the sync script to copy and sync changes easily over USB:
+- **ADB Script:** If you have ADB installed and this repo checked out, you can use the sync script to copy initial files easily over USB:
 
 ```bash
 WOW_SRC="/Applications/World of Warcraft" tools/sync_wow_to_device.sh
@@ -60,7 +60,7 @@ WOW_SRC="/Applications/World of Warcraft" tools/sync_wow_to_device.sh
 
 Open **WoW Forever**. Once your game files are configured, the app automatically launches straight into the game. The first launch downloads the ARM64 game client and installs the Windows environment, which takes a few minutes and needs an internet connection.
 
-- **Setup screen:** to access folder settings, forget credentials, or check environment status, hold **Start + Select + L2 + R2** (or tap the back button) during the loading splash to cancel boot and return to the setup screen.
+- **Setup screen:** to access folder settings, forget credentials, check environment status, or view updates, hold **Start + Select + L2 + R2** (or tap the back button) during the loading splash to cancel boot and return to the setup screen.
 - The app creates a basic `WTF/Config.wtf` on first run and always sets `gxApi "D3D11"`, the renderer that works with DXVK.
 
 ### Controls and signing in
@@ -75,18 +75,16 @@ Open **WoW Forever**. Once your game files are configured, the app automatically
 
 ## Updating the game
 
-**The app doesn't update the game.** Every time Blizzard patches the beta, you have to copy the new files to the device yourself. If the game suddenly says **"No realms available"** or there are no servers to pick, an out-of-date client is almost always the reason.
+WoW Forever v2.0 features a native in-app game updater connected directly to Blizzard's public edge CDNs. **You no longer need a computer or USB cables to keep your game updated.**
 
-To update:
+Whenever Blizzard patches the game:
+1. **Live Version Check:** The launcher automatically checks the live version against Blizzard's public patch service on startup.
+2. **Update Gate:** If an update is detected, auto-launch cancels and displays the update card with the remote build version, plus a secondary *Launch Anyway (Outdated)* override.
+3. **One-Tap Update:** Tapping **UPDATE TO {version}** downloads the new ARM64 client binaries (`WowB-ARM64.exe` and companion DLLs), saves remote configs to `Data/config/`, syncs new CASC index archives to `Data/indices/`, and atomically updates `.build.info` on disk over Wi-Fi.
+4. **Instant Boot:** Once the update completes, the launcher automatically transitions into booting World of Warcraft at 60 FPS.
+5. **In-Game Streaming:** The game engine's internal streaming client seamlessly streams any newly introduced assets from Blizzard's edge CDNs during gameplay.
 
-1. Let Battle.net patch the game on your computer.
-2. With the device connected over USB, run:
-
-   ```bash
-   tools/sync_wow_to_device.sh
-   ```
-
-   It copies only changed or new files in `Data/`, deletes stale index files, refreshes `.build.info` and `.flavor.info`, and downloads the matching `WowB-ARM64.exe` when the build changed. At the end it checks that the device matches your computer.
+*(Optional fallback: If you ever want to re-seed or mirror your full PC installation over USB, `tools/sync_wow_to_device.sh` is still available.)*
 
 ---
 
@@ -95,7 +93,7 @@ To update:
 | Symptom | Fix |
 | :--- | :--- |
 | *CAS system was unable to initialize: no active install info entries* | `.build.info` or `_classic_beta_/.flavor.info` is missing on the device. |
-| *No realms available* / no servers listed | The device client is out of date. Blizzard patched the beta. Run the update steps above. |
+| *No realms available* / no servers listed | The device client is out of date. Tap **Update** on the launcher setup screen, or restart the app with Wi-Fi enabled. |
 | Keyboard doesn't appear | Force-stop Gboard (Settings → Apps → Gboard → Force stop) and open **Keyboard** again. It can get stuck on the second screen. |
 | Returns to the launcher after "Launching Game…" | Check the files under `_classic_beta_/Errors/` on the device. |
 | Handheld frontend (e.g. Cocoon) shows the wrong icon | The frontend cached an old icon. Set it with the frontend's "Edit App Artwork", or reinstall the app. |
@@ -145,6 +143,7 @@ GameNative is a general game library with Steam, GOG, Epic, Amazon, EA and Rocks
 - **Small robustness fixes:** non-numeric container IDs no longer crash the ID parser, and the bionic redirect library is copied in if it's missing.
 - **Keyboard fixes:** GameNative's on-screen keyboard dropped shifted symbols (`@` came through as `2`), because it sent key codes without the character or the Shift key. The fix is in `Keyboard.java` and `IMEInputReceiver.kt`. The keyboard now always goes through the IME receiver, so it appears on the Thor's bottom screen.
 - **Battle.net sign-in:** a sidebar item that types a saved, Keystore-encrypted login into WoW (`ui/screen/wow/BattleNetSignIn.kt`). It reliably selects existing fields before typing and moves the cursor off-screen to (0,0) for clean controller play.
+- **Native In-App Game Updater (v2.0):** Live version check against Blizzard patch services, direct-from-CDN ARM64 binary and manifest downloads, CASC index synchronization, and atomic `.build.info` updates on-device over Wi-Fi without any PC dependency.
 - **Lean runtime & startup:** eliminated continuous background accelerometer polling during gameplay in favor of native OS window management, removed cold-boot bitmap allocations, guarded background performance metric collection loops, and switched DNS to native platform resolution.
 - **Removed:** every store backend (Steam and JavaSteam, GOG, Epic, Amazon, EA, Rockstar), library, login, settings, custom game scanner, and downloads screens, ExoPlayer and browser dependencies, `DownloadService`, `ContainerMigrator`, Nexus mod management, the Meta Quest/XR build, PostHog analytics, Play Integrity, the self-updater, the Room database, the notification prompt, extra bundled Box64/FEX/DXVK versions and the legacy (Android 9) build. That's roughly 135k lines of code and about half the APK size.
 - **Tooling:** `tools/download_wow_arm64.py` fetches the ARM64 client from Blizzard's CDN, `tools/sync_wow_to_device.sh` handles updates, and `tools/fetch_components.sh` downloads the runtime archives.
