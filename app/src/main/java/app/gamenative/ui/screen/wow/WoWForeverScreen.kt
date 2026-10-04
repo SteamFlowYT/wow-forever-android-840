@@ -76,6 +76,20 @@ fun WoWForeverScreen(
     var dataExists by remember { mutableStateOf(false) }
     var buildInfoExists by remember { mutableStateOf(false) }
     var hasStorageAccess by remember { mutableStateOf(true) }
+    var versionStatus by remember { mutableStateOf<WowClientDownloader.VersionCheckResult?>(null) }
+    var isCheckingVersion by remember { mutableStateOf(false) }
+
+    fun checkVersionStatus() {
+        if (!File(gamePath, ".build.info").exists()) return
+        isCheckingVersion = true
+        scope.launch(Dispatchers.IO) {
+            val result = WowClientDownloader.checkVersion(File(gamePath))
+            withContext(Dispatchers.Main) {
+                versionStatus = result
+                isCheckingVersion = false
+            }
+        }
+    }
 
     fun checkFiles(): Boolean {
         val root = File(gamePath)
@@ -94,6 +108,9 @@ fun WoWForeverScreen(
         checkFiles()
         isLaunching = false
         statusText = "Ready to launch"
+        if (versionStatus == null && !WoWLauncherState.shouldAutoLaunch) {
+            checkVersionStatus()
+        }
         onPauseOrDispose {
             launchJob?.cancel()
             launchJob = null
@@ -224,9 +241,27 @@ fun WoWForeverScreen(
 
     LaunchedEffect(gamePath) {
         val ready = checkFiles()
-        if (WoWLauncherState.shouldAutoLaunch && ready) {
-            WoWLauncherState.shouldAutoLaunch = false
-            launchGame()
+        Timber.i("WoWForeverScreen LaunchedEffect: gamePath=$gamePath, ready=$ready, shouldAutoLaunch=${WoWLauncherState.shouldAutoLaunch}")
+        if (ready) {
+            if (WoWLauncherState.shouldAutoLaunch) {
+                isCheckingVersion = true
+                val check = withContext(Dispatchers.IO) {
+                    WowClientDownloader.checkVersion(File(gamePath))
+                }
+                Timber.i("WoWForeverScreen LaunchedEffect: check=$check, isOutdated=${check?.isOutdated}")
+                versionStatus = check
+                isCheckingVersion = false
+                WoWLauncherState.shouldAutoLaunch = false
+                if (check?.isOutdated == true) {
+                    PluviaApp.events.emit(AndroidEvent.ClearBootingSplash)
+                } else {
+                    launchGame()
+                }
+            } else {
+                checkVersionStatus()
+            }
+        } else {
+            PluviaApp.events.emit(AndroidEvent.ClearBootingSplash)
         }
     }
 
@@ -309,6 +344,17 @@ fun WoWForeverScreen(
                     CheckItem(label = "Install Info (.build.info)", ready = buildInfoExists)
                     Spacer(modifier = Modifier.height(8.dp))
                     CheckItem(label = "Turnip Driver & Proton 11 ARM64EC (Bundled)", ready = true)
+                    if (versionStatus != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CheckItem(
+                            label = if (versionStatus!!.isOutdated) {
+                                "Client Build: ${versionStatus!!.localVersion} (Update ${versionStatus!!.remoteVersion} available)"
+                            } else {
+                                "Client Build: ${versionStatus!!.localVersion} (Up to date)"
+                            },
+                            ready = !versionStatus!!.isOutdated
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
                     HorizontalDivider(color = Color(0xFF1E2D44))
@@ -333,6 +379,49 @@ fun WoWForeverScreen(
                 }
             }
 
+            if (versionStatus?.isOutdated == true) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .border(1.dp, Color(0xFFE53E3E).copy(alpha = 0.6f), RoundedCornerShape(16.dp)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2D1515).copy(alpha = 0.85f)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFFC8181),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "GAME UPDATE REQUIRED",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                                color = Color(0xFFFC8181)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Live servers require build ${versionStatus?.remoteVersion}, but local files are build ${versionStatus?.localVersion}. Logging in may fail or disconnect at realm selection.",
+                            fontSize = 12.sp,
+                            color = Color(0xFFFED7D7),
+                            lineHeight = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Update the game on PC via Battle.net and copy the updated files to this device.",
+                            fontSize = 11.sp,
+                            color = Color(0xFFCBD5E1)
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
             // Action section
@@ -340,14 +429,14 @@ fun WoWForeverScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (isLaunching) {
+                if (isLaunching || (isCheckingVersion && WoWLauncherState.shouldAutoLaunch)) {
                     CircularProgressIndicator(
                         color = Color(0xFFC79C6E),
                         modifier = Modifier.size(36.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = statusText,
+                        text = if (isLaunching) statusText else "Checking for game updates...",
                         fontSize = 13.sp,
                         color = Color(0xFFE2E8F0),
                         textAlign = TextAlign.Center
@@ -384,7 +473,7 @@ fun WoWForeverScreen(
                             .fillMaxWidth(0.85f)
                             .height(56.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF9E7138),
+                            containerColor = if (versionStatus?.isOutdated == true) Color(0xFF8C3A3A) else Color(0xFF9E7138),
                             contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(14.dp)
@@ -392,7 +481,7 @@ fun WoWForeverScreen(
                         Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "PLAY WORLD OF WARCRAFT",
+                            text = if (versionStatus?.isOutdated == true) "LAUNCH ANYWAY" else "PLAY WORLD OF WARCRAFT",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp
@@ -405,7 +494,10 @@ fun WoWForeverScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(onClick = { checkFiles() }) {
+                        TextButton(onClick = {
+                            checkFiles()
+                            checkVersionStatus()
+                        }) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF88A0C0))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Refresh Status", fontSize = 12.sp, color = Color(0xFF88A0C0))

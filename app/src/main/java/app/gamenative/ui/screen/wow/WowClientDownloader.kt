@@ -9,12 +9,85 @@ import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.security.DigestOutputStream
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 import java.util.zip.Inflater
+import timber.log.Timber
 
 object WowClientDownloader {
     const val FLAVOR_DIR = "_classic_beta_"
     private const val PLATFORM_ARCH = "arm64"
     private const val EXCLUDED_ARCH = "x86_64"
+
+    data class VersionCheckResult(
+        val localVersion: String,
+        val remoteVersion: String,
+        val isOutdated: Boolean,
+    )
+
+    fun checkVersion(gameRoot: File): VersionCheckResult? {
+        val buildInfo = File(gameRoot, ".build.info")
+        if (!buildInfo.isFile) {
+            Timber.w("checkVersion: .build.info is not a file in $gameRoot")
+            return null
+        }
+        val row = runCatching { activeBuild(buildInfo) }.getOrElse {
+            Timber.w(it, "checkVersion: activeBuild failed")
+            return null
+        }
+        val localVersion = row["Version"] ?: run {
+            Timber.w("checkVersion: row has no Version")
+            return null
+        }
+        val localBuildKey = row["Build Key"] ?: run {
+            Timber.w("checkVersion: row has no Build Key")
+            return null
+        }
+        val product = row["Product"]?.takeIf { it.isNotBlank() } ?: "wow_classic_beta"
+
+        val request = Request.Builder()
+            .url("http://us.patch.battle.net:1119/$product/versions")
+            .build()
+        val client = Net.http.newBuilder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(6, TimeUnit.SECONDS)
+            .build()
+        val text = runCatching {
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+        }.getOrElse {
+            Timber.w(it, "checkVersion: http call failed")
+            return null
+        } ?: run {
+            Timber.w("checkVersion: response body is null or unsuccessful")
+            return null
+        }
+
+        val lines = text.lines().filter { it.isNotBlank() && !it.startsWith("#") }
+        if (lines.size < 2) {
+            Timber.w("checkVersion: lines size < 2: $text")
+            return null
+        }
+        val header = lines.first().split("|").map { it.substringBefore("!") }
+        val remoteRow = lines.drop(1).map { header.zip(it.split("|")).toMap() }.firstOrNull() ?: run {
+            Timber.w("checkVersion: no remoteRow")
+            return null
+        }
+        val remoteVersion = remoteRow["VersionsName"] ?: remoteRow["VersionName"] ?: remoteRow["Version"] ?: run {
+            Timber.w("checkVersion: no remoteVersion in $remoteRow")
+            return null
+        }
+        val remoteBuildKey = remoteRow["BuildConfig"] ?: ""
+
+        val isOutdated = localVersion != remoteVersion || (remoteBuildKey.isNotBlank() && localBuildKey != remoteBuildKey)
+        Timber.i("checkVersion: localVersion=$localVersion, remoteVersion=$remoteVersion, isOutdated=$isOutdated")
+        return VersionCheckResult(
+            localVersion = localVersion,
+            remoteVersion = remoteVersion,
+            isOutdated = isOutdated,
+        )
+    }
 
     fun download(gameRoot: File, onStatus: (String) -> Unit) {
         val row = activeBuild(File(gameRoot, ".build.info"))
