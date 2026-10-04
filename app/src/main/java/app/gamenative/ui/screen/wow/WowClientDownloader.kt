@@ -175,16 +175,52 @@ object WowClientDownloader {
             }
         }
 
+        if (cdnConfigRaw != null) {
+            val cdnConfig = parseConfig(String(cdnConfigRaw))
+            syncIndices(gameRoot, cdn, cdnConfig, onStatus)
+        }
+
         onStatus("Updating build information...")
         updateBuildInfo(
             gameRoot = gameRoot,
             newVersion = target.remoteVersion,
             newBuildKey = target.remoteBuildConfig,
             newCdnKey = target.remoteCdnConfig,
+            newCdnHosts = target.remoteCdnHosts,
+            newCdnPath = target.remoteCdnPath,
         )
     }
 
-    private fun updateBuildInfo(gameRoot: File, newVersion: String, newBuildKey: String, newCdnKey: String) {
+    private fun syncIndices(gameRoot: File, cdn: Cdn, cdnConfig: Map<String, List<String>>, onStatus: (String) -> Unit) {
+        val indicesDir = File(gameRoot, "Data/indices")
+        indicesDir.mkdirs()
+        val required = mutableSetOf<String>()
+        cdnConfig["archives"]?.let { required.addAll(it) }
+        cdnConfig["patch-archives"]?.let { required.addAll(it) }
+        cdnConfig["file-index"]?.firstOrNull()?.let { required.add(it) }
+        cdnConfig["patch-file-index"]?.firstOrNull()?.let { required.add(it) }
+        cdnConfig["archive-group"]?.firstOrNull()?.let { required.add(it) }
+        cdnConfig["patch-archive-group"]?.firstOrNull()?.let { required.add(it) }
+
+        val missing = required.filter { !File(indicesDir, "$it.index").isFile }
+        if (missing.isNotEmpty()) {
+            onStatus("Syncing ${missing.size} game index archives...")
+            missing.forEachIndexed { index, hash ->
+                onStatus("Syncing index archive (${index + 1}/${missing.size})...")
+                val bytes = cdn.fetch("data", "$hash.index") ?: return@forEachIndexed
+                File(indicesDir, "$hash.index").writeBytes(bytes)
+            }
+        }
+    }
+
+    private fun updateBuildInfo(
+        gameRoot: File,
+        newVersion: String,
+        newBuildKey: String,
+        newCdnKey: String,
+        newCdnHosts: List<String> = emptyList(),
+        newCdnPath: String = "",
+    ) {
         val buildInfo = File(gameRoot, ".build.info")
         if (!buildInfo.isFile) return
         val lines = buildInfo.readLines()
@@ -193,6 +229,8 @@ object WowClientDownloader {
         val versionIdx = header.indexOf("Version")
         val buildKeyIdx = header.indexOf("Build Key")
         val cdnKeyIdx = header.indexOf("CDN Key")
+        val cdnHostsIdx = header.indexOf("CDN Hosts")
+        val cdnPathIdx = header.indexOf("CDN Path")
         val activeIdx = header.indexOf("Active")
 
         val updated = lines.mapIndexed { idx, line ->
@@ -202,6 +240,8 @@ object WowClientDownloader {
                 if (versionIdx in cols.indices && newVersion.isNotBlank()) cols[versionIdx] = newVersion
                 if (buildKeyIdx in cols.indices && newBuildKey.isNotBlank()) cols[buildKeyIdx] = newBuildKey
                 if (cdnKeyIdx in cols.indices && newCdnKey.isNotBlank()) cols[cdnKeyIdx] = newCdnKey
+                if (cdnHostsIdx in cols.indices && newCdnHosts.isNotEmpty()) cols[cdnHostsIdx] = newCdnHosts.joinToString(" ")
+                if (cdnPathIdx in cols.indices && newCdnPath.isNotBlank()) cols[cdnPathIdx] = newCdnPath
             }
             cols.joinToString("|")
         }
@@ -379,7 +419,14 @@ object WowClientDownloader {
         fun read(ekey: String): ByteArray? {
             for (archive in archives) {
                 val local = File(gameRoot, "Data/indices/$archive.index")
-                val index = if (local.isFile) local.readBytes() else cdn.fetch("data", "$archive.index") ?: continue
+                val index = if (local.isFile) {
+                    local.readBytes()
+                } else {
+                    val fetched = cdn.fetch("data", "$archive.index") ?: continue
+                    local.parentFile?.mkdirs()
+                    local.writeBytes(fetched)
+                    fetched
+                }
                 val buffer = ByteBuffer.wrap(index)
                 for (block in 0 until index.size / 4096 * 4096 step 4096) {
                     var pos = block
