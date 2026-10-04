@@ -11,7 +11,6 @@ import android.widget.TextView;
 import com.winlator.xenvironment.ImageFs;
 
 import app.gamenative.R;
-import app.gamenative.powercontrol.metrics.FrameTimeRing;
 import timber.log.Timber;
 
 import java.io.File;
@@ -67,7 +66,6 @@ public class FrameRating extends FrameLayout implements Runnable {
     }
 
     public void update(long time) {
-        FrameTimeRing.record();
         if (lastTime == 0) lastTime = time;
         if (sessionStartTime == 0) sessionStartTime = time;
         try {

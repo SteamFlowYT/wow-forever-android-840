@@ -1,9 +1,8 @@
-package app.gamenative.powercontrol.metrics
+package app.gamenative.ui.widget
 
 import android.os.SystemClock
 import java.io.File
 import java.util.Locale
-import timber.log.Timber
 
 enum class CpuUsageSource {
     PROC_STAT,
@@ -15,13 +14,7 @@ data class CpuUsageReading(val percent: Int, val source: CpuUsageSource)
 
 data class GpuUsageReading(val percent: Int, val source: String)
 
-/**
- * Device sysfs discovery shared by the metrics collector and the on-screen HUD.
- * Discovery results are cached process-wide so both consumers scan the tree once.
- */
 object SystemMetricsSources {
-    private const val TAG = "PowerMetrics"
-
     @Volatile
     private var gpuUsagePathsCache: List<String>? = null
 
@@ -96,14 +89,9 @@ object SystemMetricsSources {
 
         val paths = candidates.toList()
         gpuUsagePathsCache = paths
-        Timber.tag(TAG).v("Discovered GPU usage paths: %s", paths.joinToString())
         return paths
     }
 
-    /**
-     * Thermal zones ranked for CPU representativeness (lower rank wins):
-     * cpu-silicon, cpu-0, generic cpu, soc, s5p-tmu, cputop, tsens, cluster, big/little.
-     */
     @Synchronized
     fun cpuTempPaths(): List<String> {
         cpuTempPathsCache?.let { return it }
@@ -127,10 +115,6 @@ object SystemMetricsSources {
         return paths
     }
 
-    /**
-     * Vendor GPU temperature nodes first, then thermal zones ranked by
-     * gpu-silicon, generic gpu, g3d, kgsl, mali.
-     */
     @Synchronized
     fun gpuTempPaths(): List<String> {
         gpuTempPathsCache?.let { return it }
@@ -231,10 +215,6 @@ object SystemMetricsSources {
     }
 }
 
-/**
- * Delta-based `/proc/stat` reader. Each instance owns its own previous sample,
- * so several consumers can sample at independent cadences.
- */
 class CpuUsageSampler {
     private var lastTotal: Long? = null
     private var lastIdle: Long? = null
@@ -279,10 +259,6 @@ class CpuUsageSampler {
         return CpuUsageReading(fallback, CpuUsageSource.CPU_FREQUENCY)
     }
 
-    /**
-     * Biased proxy: reports the aggregate clock ratio, not occupancy. Only used
-     * when /proc/stat is unreadable, and always tagged as such on the sample.
-     */
     private fun readFromFrequency(): Int? {
         var currentTotal = 0L
         var maxTotal = 0L
@@ -306,13 +282,6 @@ class CpuUsageSampler {
     }
 }
 
-/**
- * Turns the cumulative `busy total` pair of kgsl `gpubusy` into a load percentage
- * for the interval between two reads.
- *
- * Some kernels clear the counters on read instead of accumulating; a repeated
- * decrease switches this sampler to reading the raw pair as an interval value.
- */
 class GpuBusyDelta {
     private var lastBusy = -1L
     private var lastTotal = -1L
@@ -344,7 +313,7 @@ class GpuBusyDelta {
         val totalDelta = total - previousTotal
         if (busyDelta < 0L || totalDelta <= 0L) {
             decreaseStreak++
-            if (decreaseStreak >= PER_READ_DETECTION_STREAK) {
+            if (decreaseStreak >= 2) {
                 perReadCounters = true
             }
             return null
@@ -358,16 +327,8 @@ class GpuBusyDelta {
         if (total <= 0L) return null
         return ((busy * 100L) / total).toInt().coerceIn(0, 100)
     }
-
-    private companion object {
-        const val PER_READ_DETECTION_STREAK = 2
-    }
 }
 
-/**
- * Reads the first GPU usage node that yields a value, keeping the per-node delta
- * state needed by counter-style nodes.
- */
 class GpuUsageSampler {
     private val busyDelta = GpuBusyDelta()
     private var lastGpuInfoMs: Long? = null

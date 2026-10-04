@@ -6,7 +6,6 @@ import android.util.Log;
 
 import app.gamenative.BuildConfig;
 import app.gamenative.R;
-import app.gamenative.enums.Marker;
 import app.gamenative.utils.ContainerUtils;
 import app.gamenative.utils.downloader.ContainerFilesDownloaderKt;
 import app.gamenative.utils.downloader.ProgressCallback;

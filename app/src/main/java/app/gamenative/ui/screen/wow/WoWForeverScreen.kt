@@ -188,7 +188,7 @@ fun WoWForeverScreen(
                     put("executablePath", "G:\\_classic_beta_\\WowB-ARM64.exe")
                     put("execArgs", "-d3d11")
                     put("showFPS", true)
-                    put("startupSelection", Container.STARTUP_SELECTION_NORMAL.toInt())
+                    put("startupSelection", Container.STARTUP_SELECTION_AGGRESSIVE.toInt())
                     put("wow64Mode", true)
                 }
 

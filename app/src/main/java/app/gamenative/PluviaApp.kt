@@ -10,7 +10,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.navigation.NavController
 import app.gamenative.events.EventDispatcher
-import app.gamenative.powercontrol.PowerManager
 import app.gamenative.ui.screen.xserver.RadialMenuCoordinator
 import android.app.Application
 import com.winlator.container.Container
@@ -45,7 +44,6 @@ class PluviaApp : Application() {
 
         CrashHandler.initialize(this)
         PrefManager.init(this)
-        PowerManager.initialize(this)
     }
 
     companion object {
@@ -102,8 +100,6 @@ class PluviaApp : Application() {
             runCatching { env?.stopEnvironmentComponents() }
                 .onFailure { Timber.e(it, "shutdownEnvironment: stopEnvironmentComponents") }
 
-            // Stop performance driver
-            PowerManager.stop()
 
             xEnvironment = null
             inputControlsView = null

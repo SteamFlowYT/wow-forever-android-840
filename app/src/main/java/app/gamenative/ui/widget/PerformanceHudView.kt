@@ -21,11 +21,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import app.gamenative.PrefManager
-import app.gamenative.powercontrol.PowerManager
-import app.gamenative.powercontrol.fan.FanController
-import app.gamenative.powercontrol.metrics.CpuUsageSampler
-import app.gamenative.powercontrol.metrics.GpuUsageSampler
-import app.gamenative.powercontrol.metrics.SystemMetricsSources
 import app.gamenative.ui.data.PerformanceHudConfig
 import app.gamenative.ui.data.PerformanceHudSize
 import app.gamenative.utils.DateTimeUtils.formatRuntimeHours
@@ -334,20 +329,9 @@ class PerformanceHudView(
         )
     }
 
-    private fun readFanText(): String? {
-        if (!PrefManager.showPerformanceHudFan) return null
-        if (!FanController.isRunning()) return null
-        return FanController.latestSample?.let { "FAN ${it.appliedPercent}%" }
-    }
+    private fun readFanText(): String? = null
 
-    private fun readTuneText(): String? {
-        if (!PrefManager.showPerformanceHudTunerCaps) return null
-        val caps = PowerManager.latestTunerCaps() ?: return null
-        val prime = caps.primeKhz?.let { String.format(Locale.US, "%.2f", it / 1_000_000.0) } ?: "-"
-        val performance = caps.performanceKhz?.let { String.format(Locale.US, "%.2f", it / 1_000_000.0) } ?: "-"
-        val gpu = caps.gpuLevel?.toString() ?: "-"
-        return "TUNE $prime/${performance}GHz G$gpu"
-    }
+    private fun readTuneText(): String? = null
 
     private fun collectBatterySnapshot(): BatterySnapshot {
         val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager

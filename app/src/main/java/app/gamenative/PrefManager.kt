@@ -14,13 +14,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import app.gamenative.powercontrol.autotuning.DeviceGate
 import app.gamenative.enums.AppTheme
-import app.gamenative.ui.enums.AppFilter
-import app.gamenative.ui.enums.HomeDestination
-import app.gamenative.ui.enums.LibraryTab
 import app.gamenative.ui.enums.Orientation
-import app.gamenative.ui.enums.PaneType
 import com.materialkolor.PaletteStyle
 import com.winlator.box86_64.Box86_64Preset
 import com.winlator.container.Container
@@ -859,130 +854,7 @@ object PrefManager {
             }
         }
 
-    private val LIBRARY_LAYOUT = intPreferencesKey("library_layout")
-    var libraryLayout: PaneType
-        get() {
-            val value = getPref(LIBRARY_LAYOUT, PaneType.UNDECIDED.ordinal)
-            return PaneType.entries.getOrNull(value) ?: PaneType.UNDECIDED
-        }
-        set(value) {
-            setPref(LIBRARY_LAYOUT, value.ordinal)
-        }
 
-    private val LIBRARY_FILTER = intPreferencesKey("library_filter")
-    var libraryFilter: EnumSet<AppFilter>
-        get() {
-            val defaultFilter = EnumSet.of(AppFilter.GAME, AppFilter.SHARED)
-            val value = getPref(LIBRARY_FILTER, AppFilter.toFlags(defaultFilter))
-            return AppFilter.fromFlags(value)
-        }
-        set(value) {
-            setPref(LIBRARY_FILTER, AppFilter.toFlags(value))
-        }
-
-    private val LIBRARY_SORT_KEY = stringPreferencesKey("library_sort_key")
-    private val LIBRARY_SORT_LEGACY = intPreferencesKey("library_sort")
-    var librarySortOption: app.gamenative.ui.enums.SortOption
-        get() {
-            // Try string key first, fall back to legacy ordinal for migration
-            val keyValue = getPref(LIBRARY_SORT_KEY, "")
-            return if (keyValue.isNotEmpty()) {
-                app.gamenative.ui.enums.SortOption.fromKey(keyValue)
-            } else {
-                val ordinal = getPref(LIBRARY_SORT_LEGACY, app.gamenative.ui.enums.SortOption.INSTALLED_FIRST.ordinal)
-                @Suppress("DEPRECATION")
-                app.gamenative.ui.enums.SortOption.fromOrdinal(ordinal)
-            }
-        }
-        set(value) {
-            setPref(LIBRARY_SORT_KEY, value.key)
-        }
-
-    private val LIBRARY_STEAM_COLLECTIONS_CACHE = stringPreferencesKey("library_steam_collections_cache")
-    var librarySteamCollectionsCache: String
-        get() = getPref(LIBRARY_STEAM_COLLECTIONS_CACHE, "")
-        set(value) { setPref(LIBRARY_STEAM_COLLECTIONS_CACHE, value) }
-
-    private val LIBRARY_STEAM_COLLECTIONS_SKIPPED_DYNAMIC = booleanPreferencesKey("library_steam_collections_skipped_dynamic")
-    var librarySteamCollectionsSkippedDynamic: Boolean
-        get() = getPref(LIBRARY_STEAM_COLLECTIONS_SKIPPED_DYNAMIC, false)
-        set(value) { setPref(LIBRARY_STEAM_COLLECTIONS_SKIPPED_DYNAMIC, value) }
-
-    private val LIBRARY_STEAM_COLLECTIONS = stringPreferencesKey("library_steam_collections")
-    private const val COLLECTION_ID_SEPARATOR = "" // unit separator; cannot appear in a collection id
-    var librarySteamCollections: Set<String>
-        get() {
-            val raw = getPref(LIBRARY_STEAM_COLLECTIONS, "")
-            if (raw.isEmpty()) return emptySet()
-            return raw.split(COLLECTION_ID_SEPARATOR).filter { it.isNotEmpty() }.toSet()
-        }
-        set(value) {
-            setPref(LIBRARY_STEAM_COLLECTIONS, value.joinToString(COLLECTION_ID_SEPARATOR))
-        }
-
-    private val LIBRARY_CURATED_LISTS = stringPreferencesKey("library_curated_lists")
-    var libraryCuratedLists: Set<String>
-        get() {
-            val raw = getPref(LIBRARY_CURATED_LISTS, "")
-            if (raw.isEmpty()) return emptySet()
-            return raw.split(COLLECTION_ID_SEPARATOR).filter { it.isNotEmpty() }.toSet()
-        }
-        set(value) {
-            setPref(LIBRARY_CURATED_LISTS, value.joinToString(COLLECTION_ID_SEPARATOR))
-        }
-
-    private val LIBRARY_CURATED_LISTS_CACHE = stringPreferencesKey("library_curated_lists_cache")
-    var libraryCuratedListsCache: String
-        get() = getPref(LIBRARY_CURATED_LISTS_CACHE, "")
-        set(value) { setPref(LIBRARY_CURATED_LISTS_CACHE, value) }
-
-    private val LIBRARY_TAB_PREFERENCES = stringPreferencesKey("library_tab_preferences")
-    var libraryTabs: List<LibraryTab>
-        get() = LibraryTab.normalizeVisibleTabs(
-            getPref(LIBRARY_TAB_PREFERENCES, ""),
-            LibraryTab.entries.toList(),
-        )
-        set(value) {
-            val normalized = LibraryTab.normalizeVisibleTabs(
-                LibraryTab.serializeVisibleTabs(value),
-                LibraryTab.entries.toList(),
-            )
-            setPref(LIBRARY_TAB_PREFERENCES, LibraryTab.serializeVisibleTabs(normalized))
-        }
-
-    private val STEAM_USER_ACCOUNT_ID = intPreferencesKey("steam_user_account_id")
-    var steamUserAccountId: Int
-        get() = getPref(STEAM_USER_ACCOUNT_ID, 0)
-        set(value) {
-            setPref(STEAM_USER_ACCOUNT_ID, value)
-        }
-
-    private val STEAM_USER_STEAM_ID_64 = longPreferencesKey("steam_user_steam_id_64")
-    var steamUserSteamId64: Long
-        get() = getPref(STEAM_USER_STEAM_ID_64, 0L)
-        set(value) {
-            setPref(STEAM_USER_STEAM_ID_64, value)
-        }
-
-    /**
-     * Get or Set the last known avatar hash for the user.
-     */
-    private val STEAM_USER_AVATAR_HASH = stringPreferencesKey("steam_user_avatar_hash")
-    var steamUserAvatarHash: String
-        get() = getPref(STEAM_USER_AVATAR_HASH, "")
-        set(value) {
-            setPref(STEAM_USER_AVATAR_HASH, value)
-        }
-
-    /**
-     * Get or Set the last known name for the user.
-     */
-    private val STEAM_USER_NAME = stringPreferencesKey("steam_user_name")
-    var steamUserName: String
-        get() = getPref(STEAM_USER_NAME, "")
-        set(value) {
-            setPref(STEAM_USER_NAME, value)
-        }
 
     private val ALLOWED_ORIENTATION = intPreferencesKey("allowed_orientation")
     var allowedOrientation: EnumSet<Orientation>
@@ -1081,15 +953,7 @@ object PrefManager {
             setPref(APP_THEME_PALETTE, value.ordinal)
         }
 
-    private val START_SCREEN = intPreferencesKey("start screen")
-    var startScreen: HomeDestination
-        get() {
-            val value = getPref(START_SCREEN, HomeDestination.Library.ordinal)
-            return HomeDestination.entries.getOrNull(value) ?: HomeDestination.Library
-        }
-        set(value) {
-            setPref(START_SCREEN, value.ordinal)
-        }
+
 
     private val FRIENDS_LIST_HEADER = stringPreferencesKey("friends_list_header")
     var friendsListHeader: Set<String>
@@ -1164,9 +1028,4 @@ object PrefManager {
     var appLanguage: String
         get() = getPref(APP_LANGUAGE, "")
         set(value) = setPref(APP_LANGUAGE, value)
-
-    private val POWER_CONTROL_DEFAULT_ENABLED = booleanPreferencesKey("power_control_default_enabled")
-    var powerControlDefaultEnabled: Boolean
-        get() = getPref(POWER_CONTROL_DEFAULT_ENABLED, DeviceGate.isDeviceSupported())
-        set(value) { setPref(POWER_CONTROL_DEFAULT_ENABLED, value) }
 }

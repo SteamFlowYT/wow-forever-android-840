@@ -224,7 +224,7 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         File rootDir = imageFs.getRootDir();
 
         PrefManager.init(context);
-        boolean enableBox86_64Logs = PrefManager.getBoolean("enable_box86_64_logs", true);
+        boolean enableBox86_64Logs = PrefManager.getBoolean("enable_box86_64_logs", false);
         boolean shareAndroidClipboard = PrefManager.getBoolean("share_android_clipboard", false);
         boolean enablePebLogs = PrefManager.getBoolean("enable_peb_logs", false);
 
@@ -453,11 +453,13 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         ImageFs imageFs = environment.getImageFs();
         Context context = environment.getContext();
         String box64Version = container.getBox64Version();
+        File rootDir = imageFs.getRootDir();
+        File box64File = new File(rootDir, "usr/bin/box64");
+        if (box64File.exists() && box64Version.equals(container.getExtra("box64Version"))) {
+            return;
+        }
 
         Log.i("Extraction", "Extracting required box64 version: " + box64Version);
-        File rootDir = imageFs.getRootDir();
-
-        // No more version check, just extract directly.
         ContentProfile profile = contentsManager.getProfileByEntryName("box64-" + box64Version);
         if (profile != null) {
             contentsManager.applyContent(profile);
@@ -465,12 +467,9 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, context.getAssets(), "box86_64/box64-" + box64Version + "-bionic.tzst", rootDir);
         }
 
-        // Update the metadata so the container knows which version is installed.
         container.putExtra("box64Version", box64Version);
         container.saveData();
 
-        // Set execute permissions.
-        File box64File = new File(rootDir, "usr/bin/box64");
         if (box64File.exists()) {
             FileUtils.chmod(box64File, 0755);
         }
@@ -482,34 +481,33 @@ public class BionicProgramLauncherComponent extends GuestProgramLauncherComponen
         File system32dir = new File(rootDir + "/home/xuser/.wine/drive_c/windows/system32");
         boolean containerDataChanged = false;
 
-        ImageFs imageFs = ImageFs.find(context);
-
         String wowbox64Version = container.getBox64Version();
         String fexcoreVersion = container.getFEXCoreVersion();
 
-        Log.d("Extraction", "box64Version in use: " + wowbox64Version);
-        Log.d("Extraction", "fexcoreVersion in use: " + fexcoreVersion);
-
-        ContentProfile wowboxprofile = contentsManager.getProfileByEntryName("wowbox64-" + wowbox64Version);
-        if (wowboxprofile != null) {
-            contentsManager.applyContent(wowboxprofile);
-        } else {
-            Log.d("Extraction", "Extracting box64Version: " + wowbox64Version);
-            SharedComponents.extractAndLink(environment.getContext(), "wowbox64-" + wowbox64Version, TarCompressorUtils.Type.ZSTD, "wowbox64/wowbox64-" + wowbox64Version + ".tzst", system32dir, null);
+        if (!wowbox64Version.equals(container.getExtra("appliedWowbox64Version"))) {
+            ContentProfile wowboxprofile = contentsManager.getProfileByEntryName("wowbox64-" + wowbox64Version);
+            if (wowboxprofile != null) {
+                contentsManager.applyContent(wowboxprofile);
+            } else {
+                Log.d("Extraction", "Extracting box64Version: " + wowbox64Version);
+                SharedComponents.extractAndLink(environment.getContext(), "wowbox64-" + wowbox64Version, TarCompressorUtils.Type.ZSTD, "wowbox64/wowbox64-" + wowbox64Version + ".tzst", system32dir, null);
+            }
+            container.putExtra("appliedWowbox64Version", wowbox64Version);
+            containerDataChanged = true;
         }
-        container.putExtra("box64Version", wowbox64Version);
-        containerDataChanged = true;
 
-        ContentProfile fexprofile = contentsManager.getProfileByEntryName("fexcore-" + fexcoreVersion);
-        if (fexprofile != null) {
-            contentsManager.applyContent(fexprofile);
-        } else {
-            Log.d("Extraction", "Extracting fexcoreVersion: " + fexcoreVersion);
-            SharedComponents.extractAndLink(environment.getContext(), "fexcore-" + fexcoreVersion, TarCompressorUtils.Type.ZSTD, "fexcore/fexcore-" + fexcoreVersion + ".tzst", system32dir, null);
+        if (!fexcoreVersion.equals(container.getExtra("appliedFexcoreVersion"))) {
+            ContentProfile fexprofile = contentsManager.getProfileByEntryName("fexcore-" + fexcoreVersion);
+            if (fexprofile != null) {
+                contentsManager.applyContent(fexprofile);
+            } else {
+                Log.d("Extraction", "Extracting fexcoreVersion: " + fexcoreVersion);
+                SharedComponents.extractAndLink(environment.getContext(), "fexcore-" + fexcoreVersion, TarCompressorUtils.Type.ZSTD, "fexcore/fexcore-" + fexcoreVersion + ".tzst", system32dir, null);
+            }
+            container.putExtra("appliedFexcoreVersion", fexcoreVersion);
+            containerDataChanged = true;
         }
-        container.putExtra("fexcoreVersion", fexcoreVersion);
 
-        containerDataChanged = true;
         if (containerDataChanged) container.saveData();
     }
 

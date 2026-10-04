@@ -2,13 +2,9 @@ package app.gamenative.ui.screen.xserver
 
 import android.app.Activity
 import android.content.Context
-import android.database.ContentObserver
 import android.graphics.Color
 import android.os.Build
 import android.os.SystemClock
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
 import android.util.Log
 import android.view.Display
 import android.view.Gravity
@@ -101,7 +97,6 @@ import java.util.EnumSet
 import app.gamenative.externaldisplay.ExternalDisplayInputController
 import app.gamenative.externaldisplay.ExternalDisplaySwapController
 import app.gamenative.externaldisplay.SwapInputOverlayView
-import app.gamenative.powercontrol.PowerManager
 import app.gamenative.ui.component.LsfgQuickMenuState
 import app.gamenative.ui.component.PerformanceQuickMenuState
 import app.gamenative.ui.component.QuickMenu
@@ -147,7 +142,6 @@ import com.winlator.core.TarCompressorUtils
 import com.winlator.core.Win32AppWorkarounds
 import com.winlator.core.WineInfo
 import com.winlator.core.WineRegistryEditor
-import com.winlator.core.WineStartMenuCreator
 import com.winlator.core.WineThemeManager
 import com.winlator.core.WineUtils
 import com.winlator.core.envvars.EnvVarRedaction
@@ -455,29 +449,10 @@ fun XServerScreen(
     val activity = remember(context) { BrightnessManager.findActivity(context) }
 
     DisposableEffect(activity) {
-        if (activity == null) return@DisposableEffect onDispose { }
-
-        val contentResolver = activity.contentResolver
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
+        onDispose {
+            if (activity != null) {
                 BrightnessManager.clearDisplayBrightnessOverride(activity)
             }
-        }
-
-        contentResolver.registerContentObserver(
-            Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS),
-            false,
-            observer,
-        )
-        contentResolver.registerContentObserver(
-            Settings.System.getUriFor(Settings.System.SCREEN_BRIGHTNESS_MODE),
-            false,
-            observer,
-        )
-
-        onDispose {
-            contentResolver.unregisterContentObserver(observer)
-            BrightnessManager.clearDisplayBrightnessOverride(activity)
         }
     }
 
@@ -713,12 +688,7 @@ fun XServerScreen(
             ?.setFrameRateLimit(if (isLsfgAvailable && lsfgMultiplier >= 2) 0 else limit)
         // Not disarmed with LSFG: the layer only multiplies Vulkan-swapchain
         // presents, so SHM-presenting games never pass through it and would
-        // otherwise run uncapped whenever LSFG is armed.
         ShmFramePacer.setFrameRateLimit(limit)
-        PowerManager.targetFps = limit
-        // keeps frame stats in base units while generated frames tick the ring
-        PowerManager.frameSampleStride =
-            if (isLsfgAvailable && lsfgMultiplier >= 2) lsfgMultiplier else 1
     }
 
     fun effectiveFpsLimit(): Int =
@@ -769,15 +739,6 @@ fun XServerScreen(
     }
 
     LaunchedEffect(xServerView) {
-        // Adaptive-cap steps route through the LSFG limiter; the X-server
-        // limiters must stay at 0 under LSFG.
-        PowerManager.fpsCapApplier = applier@{ capFps: Int ->
-            if (!isLsfgAvailable || lsfgMultiplier < 2) return@applier false
-            PowerManager.targetFps = capFps
-            LsfgQuickMenuHelper.applyLiveFpsCap(container, capFps)
-            ShmFramePacer.setFrameRateLimit(capFps)
-            true
-        }
         val detectedMax = detectMaxRefreshRateHz(context, xServerView as? View)
         detectedMaxRefreshRateHz = detectedMax
         val clampedTarget = fpsLimiterTarget.coerceAtMost(detectedMax).coerceAtLeast(5)
@@ -2120,7 +2081,12 @@ fun XServerScreen(
                             )
                             refreshFrameRatingTracking("map-window")
                             win32AppWorkarounds?.applyWindowWorkarounds(window)
-                            onWindowMapped?.invoke(context, window)
+                            val targetExecutable = extractExecutableBasename(container.executablePath)
+                            val isGameWindow = (targetExecutable.isNotBlank() && windowMatchesExecutable(window, targetExecutable)) ||
+                                    (window.isApplicationWindow() && !window.name.equals("shell", ignoreCase = true) && !window.className.contains("explorer", ignoreCase = true))
+                            if (isGameWindow) {
+                                onWindowMapped?.invoke(context, window)
+                            }
                         }
 
                         override fun onUnmapWindow(window: Window) {
@@ -2286,28 +2252,6 @@ fun XServerScreen(
                                 onGameLaunchError,
                                 isOffline,
                             )
-
-                            // Autostart performance driver after environment is set up
-                            PowerManager.autoStart(container.rootDir)
-
-                            // Pin game process to performance cores (CPUs 4-7)
-                            container.executablePath
-                                .substringAfterLast('/')
-                                .substringAfterLast('\\')
-                                .takeIf { it.isNotEmpty() }
-                                ?.let { name ->
-                                    // Remove .exe extension if present, then add it back
-                                    val baseName = name.replace(Regex("\\.exe$", RegexOption.IGNORE_CASE), "")
-                                    PowerManager.pinGameWithRetry(
-                                        processName = "$baseName.exe",
-                                        maxRetries = 10,
-                                        retryDelayMs = 5000
-                                    )
-                                    Timber.tag("XServerScreen").i("Initiated CPU pinning for: $baseName.exe")
-                                }
-
-                            // Pin Background processes for better performance
-                            PowerManager.pinBackgroundProcesses()
 
                             if (!PluviaApp.isActivityInForeground && !neverSuspend) {
                                 PluviaApp.xEnvironment?.onPause()
@@ -4196,8 +4140,6 @@ private suspend fun setupWineSystemFiles(
         containerDataChanged = true
     }
 
-    if (xServerState.value.dxwrapper == "cnc-ddraw") envVars.put("CNC_DDRAW_CONFIG_FILE", "C:\\ProgramData\\cnc-ddraw\\ddraw.ini")
-
     // val wincomponents = if (shortcut != null) shortcut.getExtra("wincomponents", container.winComponents) else container.winComponents
     val wincomponents = container.winComponents
     if (!wincomponents.equals(container.getExtra("wincomponents"))) {
@@ -4244,7 +4186,6 @@ private suspend fun setupWineSystemFiles(
         containerDataChanged = true
     }
 
-    WineStartMenuCreator.create(context, container)
     WineUtils.createDosdevicesSymlinks(context, container)
 
     val effectiveStartupSelection = container.startupSelection
@@ -4441,19 +4382,6 @@ private suspend fun extractDXWrapperFiles(
     when (splitDxWrapper) {
         "wined3d" -> {
             restoreOriginalDllFiles(context, container, containerManager, imageFs, *dlls)
-        }
-        "cnc-ddraw" -> {
-            restoreOriginalDllFiles(context, container, containerManager, imageFs, *dlls)
-            val assetDir = "dxwrapper/cnc-ddraw-" + DefaultVersion.CNC_DDRAW
-            val configFile = File(rootDir, ImageFs.WINEPREFIX + "/drive_c/ProgramData/cnc-ddraw/ddraw.ini")
-            if (!configFile.isFile) FileUtils.copy(context, "$assetDir/ddraw.ini", configFile)
-            val shadersDir = File(rootDir, ImageFs.WINEPREFIX + "/drive_c/ProgramData/cnc-ddraw/Shaders")
-            FileUtils.delete(shadersDir)
-            FileUtils.copy(context, "$assetDir/Shaders", shadersDir)
-            TarCompressorUtils.extract(
-                TarCompressorUtils.Type.ZSTD, context.assets,
-                "$assetDir/ddraw.tzst", windowsDir, onExtractFileListener,
-            )
         }
         "vkd3d" -> {
             Timber.i("Extracting VKD3D D3D12 DLLs for dxwrapper: $dxwrapper")

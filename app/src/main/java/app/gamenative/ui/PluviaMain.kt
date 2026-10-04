@@ -58,10 +58,6 @@ import app.gamenative.PrefManager
 import app.gamenative.R
 import app.gamenative.data.GameSource
 import app.gamenative.enums.AppTheme
-import app.gamenative.enums.LoginResult
-import app.gamenative.enums.PathType
-import app.gamenative.enums.SaveLocation
-import app.gamenative.enums.SyncResult
 import app.gamenative.events.AndroidEvent
 import app.gamenative.ui.component.dialog.LoadingDialog
 import app.gamenative.ui.component.dialog.MessageDialog

@@ -33,7 +33,6 @@ import app.gamenative.ui.enums.Orientation
 import app.gamenative.ui.util.LocalSnackbarHostController
 import app.gamenative.ui.util.SnackbarHostController
 import app.gamenative.data.GameSource
-import app.gamenative.powercontrol.PowerManager
 import app.gamenative.utils.ContainerUtils
 import app.gamenative.utils.IntentLaunchManager
 import app.gamenative.utils.LocaleHelper
@@ -252,7 +251,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        PowerManager.resume()
         PluviaApp.isActivityInForeground = true
 
         // Re-apply immersive mode to ensure fullscreen persists
@@ -286,7 +284,6 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        PowerManager.pause()
         PluviaApp.isActivityInForeground = false
         if (hasReadyGameLifecycleState("pause")) {
             when {

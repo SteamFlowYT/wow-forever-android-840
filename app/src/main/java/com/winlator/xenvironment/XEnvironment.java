@@ -20,8 +20,6 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-import app.gamenative.powercontrol.PowerManager;
-
 public class XEnvironment implements Iterable<EnvironmentComponent> {
     private final Context context;
     private final ImageFs imageFs;
