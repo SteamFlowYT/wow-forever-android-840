@@ -172,7 +172,7 @@ fun WoWForeverScreen(
                 check(File(gamePath, ".build.info").exists()) {
                     "Missing .build.info in $gamePath. Copy it from your WoW install."
                 }
-                ensureGameConfig(File(gamePath))
+                ensureGameConfig(File(gamePath), gpuProfile)
 
                 val arm64Exe = File(gamePath, "${WowClientDownloader.FLAVOR_DIR}/WowB-ARM64.exe")
                 if (!arm64Exe.exists()) {
@@ -493,7 +493,6 @@ fun WoWForeverScreen(
                         listOf(
                             WowGpuProfileId.AUTO to "AUTO",
                             WowGpuProfileId.ADRENO_A8XX to "830 / 840",
-                            WowGpuProfileId.ADRENO_740 to "740 LEGACY",
                         ).forEach { (id, label) ->
                             OutlinedButton(
                                 onClick = {
@@ -718,7 +717,7 @@ private fun CheckItem(label: String, ready: Boolean) {
     }
 }
 
-private fun ensureGameConfig(root: File) {
+private fun ensureGameConfig(root: File, profile: WowGpuProfile) {
     val flavorDir = File(root, "_classic_beta_")
     val flavorInfo = File(flavorDir, ".flavor.info")
     if (!flavorInfo.exists()) {
@@ -732,7 +731,7 @@ private fun ensureGameConfig(root: File) {
         "textLocale" to "\"enUS\"",
         "audioLocale" to "\"enUS\"",
         "gxMaximize" to "\"1\"",
-        "gxWindowedResolution" to "\"1920x1080\"",
+        "gxWindowedResolution" to "\"${profile.screenSize}\"",
         "graphicsQuality" to "\"0\"",
         "ResampleQuality" to "\"0\"",
         "RenderScale" to "\"1\"",
@@ -767,6 +766,7 @@ private fun ensureGameConfig(root: File) {
                     existingKeys.add(key)
                     when {
                         key.equals("gxApi", ignoreCase = true) -> "SET gxApi \"D3D11\""
+                        key.equals("gxWindowedResolution", ignoreCase = true) -> "SET gxWindowedResolution \"${profile.screenSize}\""
                         key == "RenderScale" && parts[1] != "\"1\"" -> "SET RenderScale \"1\""
                         key == "ResampleQuality" && parts[1] != "\"0\"" -> "SET ResampleQuality \"0\""
                         key in listOf("farclip", "horizonClip", "RAIDfarclip", "RAIDhorizonClip") && parts[1] == "\"3000\"" -> "SET $key \"1200\""
