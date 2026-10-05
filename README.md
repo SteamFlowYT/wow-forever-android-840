@@ -27,9 +27,9 @@ The A8xx fork uses a separate Android package ID, `app.wowforever.a8xx`, so it c
 
 | Device | Status |
 | :--- | :--- |
-| AYN Thor (Snapdragon 8 Gen 2 / Adreno 740) | Tested, reaches the game world with controller support |
-| Retroid Pocket 6 (Snapdragon 8 Gen 2 / Adreno 740) | Tested by the original community setup |
-| AYN Odin 2 / Odin 2 Portal / Mini (Snapdragon 8 Gen 2) | Expected to work, untested |
+| AYN Odin 3 / Adreno 830 | Confirmed with SteamFlow A8xx driver path |
+| Adreno 840 device | Confirmed with SteamFlow A8xx driver path |
+| Other A8xx devices | Experimental / manual testing |
 
 Requirements:
 
@@ -44,7 +44,7 @@ Requirements:
 
 ### 1. Install the app
 
-Download `WoW-Forever.apk` from the [latest release](https://github.com/jaredgei/wow-forever-android/releases/latest) and install it on your device. The app's package name is `app.wowforever`, so it can sit alongside GameNative or Winlator.
+Download the SteamFlow A8xx APK from this repository's Releases page when available. Its package name is `app.wowforever.a8xx`, so it can be installed alongside Jared's upstream `app.wowforever` build, GameNative or Winlator.
 
 ### 2. Copy your WoW game data to the device (one-time setup)
 
