@@ -80,6 +80,9 @@ fun WoWForeverScreen(
     var isCheckingVersion by remember { mutableStateOf(false) }
     var isUpdating by remember { mutableStateOf(false) }
     var updateStatusText by remember { mutableStateOf("") }
+    var gpuProfileOverride by remember { mutableStateOf(WowGpuProfiles.loadOverride(context)) }
+    val gpuDetection = remember(gpuProfileOverride) { WowGpuProfiles.resolve(context, gpuProfileOverride) }
+    val gpuProfile = gpuDetection.profile
 
     fun checkVersionStatus() {
         if (!File(gamePath, ".build.info").exists()) return
@@ -158,7 +161,7 @@ fun WoWForeverScreen(
         launchJob = scope.launch(Dispatchers.IO) {
             try {
                 // 1. Ensure components from assets are installed
-                val componentsOk = installBundledComponents(context) { msg ->
+                val componentsOk = installBundledComponents(context, gpuProfile) { msg ->
                     scope.launch(Dispatchers.Main) { statusText = msg }
                 }
 
@@ -186,18 +189,18 @@ fun WoWForeverScreen(
                 }
 
                 // 2. Configure container
-                scope.launch(Dispatchers.Main) { statusText = "Configuring Adreno 740 container..." }
+                scope.launch(Dispatchers.Main) { statusText = "Configuring ${gpuProfile.shortTitle} container..." }
                 val containerManager = ContainerManager(context)
                 val containerId = "wow_forever"
 
                 val configData = JSONObject().apply {
                     put("id", containerId)
                     put("name", "WoW Forever")
-                    put("screenSize", "1920x1080")
-                    put("envVars", "WRAPPER_MAX_IMAGE_COUNT=0 ZINK_DESCRIPTORS=lazy ZINK_DEBUG=compact,deck_emu MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=512MB mesa_glthread=true WINEESYNC=0 MESA_VK_WSI_PRESENT_MODE=mailbox TU_DEBUG=noconform VKD3D_SHADER_MODEL=6_0 PULSE_LATENCY_MSEC=144")
+                    put("screenSize", gpuProfile.screenSize)
+                    put("envVars", gpuProfile.envVars)
                     put("graphicsDriver", "Wrapper")
-                    put("graphicsDriverVersion", "Turnip-WoW-scheduler-test")
-                    put("graphicsDriverConfig", "version=Turnip-WoW-scheduler-test,adrenotoolsTurnip=1,resourceType=buffer,bcnEmulation=auto,quality=high")
+                    put("graphicsDriverVersion", gpuProfile.driverVersion)
+                    put("graphicsDriverConfig", "version=${gpuProfile.driverVersion},adrenotoolsTurnip=1,resourceType=buffer,bcnEmulation=auto,quality=high")
                     put("displayRenderer", "vulkan")
                     put("dxwrapper", "dxvk-2.4.1-wow-aarch64-test-1")
                     put("dxwrapperConfig", "version=2.4.1-wow-aarch64-test-1")
@@ -340,7 +343,7 @@ fun WoWForeverScreen(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "Snapdragon 8 Gen 2 / Adreno 740 Edition",
+                    text = "${gpuDetection.detectedLabel} · ${gpuProfile.shortTitle}",
                     fontSize = 11.sp,
                     color = Color(0xFF7A92B0)
                 )
@@ -373,7 +376,7 @@ fun WoWForeverScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     CheckItem(label = "Install Info (.build.info)", ready = buildInfoExists)
                     Spacer(modifier = Modifier.height(8.dp))
-                    CheckItem(label = "Turnip Driver & Proton 11 ARM64EC (Bundled)", ready = true)
+                    CheckItem(label = "${gpuProfile.driverVersion} & Proton 11 ARM64EC", ready = true)
                     if (versionStatus != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         CheckItem(
@@ -448,6 +451,64 @@ fun WoWForeverScreen(
                             fontSize = 11.sp,
                             color = Color(0xFFCBD5E1)
                         )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .border(1.dp, Color(0xFF2A3C54), RoundedCornerShape(16.dp)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF101827).copy(alpha = 0.9f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "GPU PROFILE",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        color = Color(0xFFC79C6E)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = gpuProfile.title,
+                        fontSize = 13.sp,
+                        color = Color(0xFFE2E8F0),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = gpuProfile.focusNote,
+                        fontSize = 11.sp,
+                        color = Color(0xFF88A0C0)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            WowGpuProfileId.AUTO to "AUTO",
+                            WowGpuProfileId.ADRENO_A8XX to "830 / 840",
+                            WowGpuProfileId.ADRENO_740 to "740 LEGACY",
+                        ).forEach { (id, label) ->
+                            OutlinedButton(
+                                onClick = {
+                                    gpuProfileOverride = id
+                                    WowGpuProfiles.saveOverride(context, id)
+                                },
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = if (gpuProfileOverride == id) Color(0xFFC79C6E) else Color(0xFF9AAFC8)
+                                )
+                            ) {
+                                Text(label, fontSize = 10.sp, maxLines = 1)
+                            }
+                        }
                     }
                 }
             }
@@ -727,18 +788,18 @@ private fun ensureGameConfig(root: File) {
     }
 }
 
-private fun installBundledComponents(context: Context, onStatus: (String) -> Unit): Boolean {
+private fun installBundledComponents(context: Context, profile: WowGpuProfile, onStatus: (String) -> Unit): Boolean {
     val assetManager = context.assets
     val cacheDir = context.cacheDir
 
     // 1. Install Turnip Driver if needed
     try {
-        val driverDir = File(context.filesDir, "contents/adrenotools/Turnip-WoW-scheduler-test")
+        val driverDir = File(context.filesDir, "contents/adrenotools/${profile.driverVersion}")
         val metaFile = File(driverDir, "meta.json")
         if (!metaFile.exists()) {
-            onStatus("Installing custom Turnip Adreno 740 driver...")
+            onStatus("Installing ${profile.shortTitle} Turnip driver...")
             driverDir.mkdirs()
-            assetManager.open("bundled_components/turnip-wow-scheduler-test.zip").use { input ->
+            assetManager.open("bundled_components/${profile.driverAsset}").use { input ->
                 ZipInputStream(input).use { zis ->
                     var entry = zis.nextEntry
                     while (entry != null) {
