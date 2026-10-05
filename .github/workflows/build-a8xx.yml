@@ -1,0 +1,48 @@
+name: Build A8xx APK
+# Builds the SteamFlow Adreno 830/840 fork
+
+on:
+  push:
+    branches: ["steamflow-a8xx", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a8xx-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Make scripts executable
+        run: chmod +x gradlew tools/fetch_components.sh
+
+      - name: Configure Android SDK path
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Fetch WoW runtime components
+        run: tools/fetch_components.sh
+
+      - name: Build modern debug APK
+        run: ./gradlew assembleModernDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: wow-forever-a8xx-debug
+          path: app/build/outputs/apk/modern/debug/*.apk
+          if-no-files-found: error

@@ -457,3 +457,29 @@ This project bundles `app/src/main/lib/perfsdk-v1.0.0.jar`, the Samsung Performa
 power-control feature. The SDK is proprietary to Samsung Electronics and is NOT covered by
 this project's GPL-3.0 license; it is used under the terms of Samsung's SDK license
 agreement. If you redistribute this project, verify your right to redistribute the SDK.
+
+
+================================================================================
+SteamFlow A8xx Turnip profile (Adreno 830 / 840)
+================================================================================
+
+This fork can bundle a patched Mesa Turnip driver named
+"Turnip-V32-RP6sched" for the Adreno 830 / 840 path.
+
+Base:
+- Mesa / Freedreno / Turnip contributors
+- whitebelyash mesa-unified turnip/gen8 work
+- source revision used by the packaged driver:
+  9c7e022677dfa3abb356c2b6732cbd2e25783d01
+
+WoW-specific changes:
+- RP6 IR3 scheduler barycentric-block workaround
+- Vulkan ICD exports for the Android/GameNative loading path
+
+Mesa is distributed under the MIT license. The driver package retains its own
+license notices. Source and provenance are documented in the SteamFlow
+compatibility repository and in this fork's README.
+
+Additional credit:
+- u/BryTheGuy06 for the original RP6 all-in-one test work
+- arusiasotto for the A840 investigation and Gen8 driver work

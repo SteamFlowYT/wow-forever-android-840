@@ -1,6 +1,6 @@
-# WoW Forever for Android
+# WoW Forever for Android — SteamFlow A8xx fork
 
-Play the **World of Warcraft: Forever beta** on Snapdragon Android handhelds as a normal Android app. You tap the icon, press Play, and the game runs.
+A SteamFlow fork focused on newer Snapdragon hardware, especially **Adreno 830 and Adreno 840**. It keeps the standalone launcher, ARM64 client flow, updater and controller support from the upstream project while adding an A8xx-specific driver/profile path.
 
 This uses Blizzard's own **Windows ARM64** WoW client, so the game itself runs natively on the phone's CPU. Wine translates the Windows calls, and DXVK plus a patched Turnip Vulkan driver render the game on the Adreno GPU. Nothing is emulated as x86.
 
@@ -8,17 +8,32 @@ This uses Blizzard's own **Windows ARM64** WoW client, so the game itself runs n
 
 ---
 
+## SteamFlow A8xx focus
+
+This fork adds automatic profile selection for newer Gen8 Adreno hardware.
+
+| GPU | Profile | Driver | Default |
+| :--- | :--- | :--- | :--- |
+| Adreno 830 | SteamFlow A8xx | `Turnip-V32-RP6sched` | 1280x720 + sysmem |
+| Adreno 840 | SteamFlow A8xx | `Turnip-V32-RP6sched` | 1280x720 + sysmem |
+
+The launcher detects known **SM8750 / Adreno 830** and **SM8850 / Adreno 840** hardware and selects the A8xx profile automatically. A manual selector is also available for **AUTO** and **830 / 840**.
+
+For Snapdragon 8 Gen 2 / Adreno 740 devices such as Thor, Retroid Pocket 6 and Odin 2, the original project remains the recommended build: https://github.com/jaredgei/wow-forever-android
+
+The A8xx fork uses a separate Android package ID, `app.wowforever.a8xx`, so it can be installed alongside the upstream app for testing.
+
 ## Supported devices
 
 | Device | Status |
 | :--- | :--- |
-| AYN Thor (Snapdragon 8 Gen 2 / Adreno 740) | Tested, reaches the game world with controller support |
-| Retroid Pocket 6 (Snapdragon 8 Gen 2 / Adreno 740) | Tested by the original community setup |
-| AYN Odin 2 / Odin 2 Portal / Mini (Snapdragon 8 Gen 2) | Expected to work, untested |
+| AYN Odin 3 / Adreno 830 | Confirmed with SteamFlow A8xx driver path |
+| Adreno 840 device | Confirmed with SteamFlow A8xx driver path |
+| Other A8xx devices | Experimental / manual testing |
 
 Requirements:
 
-- Snapdragon 8 Gen 2 (Adreno 740). The bundled Turnip driver targets this GPU. Other Adreno 7xx chips might work but haven't been tried.
+- This fork primarily targets Snapdragon 8 Elite / Adreno 830 and the newer Adreno 840 path. Adreno 740 support is intentionally left to the upstream project.
 - Android 10 or newer, 64-bit.
 - About **80 GB** free for the game data (internal storage or SD card), plus about 4 GB of internal storage for the app and its Windows environment.
 - A Mac or PC with the WoW Forever beta installed through Battle.net, to copy the game data from.
@@ -29,7 +44,7 @@ Requirements:
 
 ### 1. Install the app
 
-Download `WoW-Forever.apk` from the [latest release](https://github.com/jaredgei/wow-forever-android/releases/latest) and install it on your device. The app's package name is `app.wowforever`, so it can sit alongside GameNative or Winlator.
+Download the SteamFlow A8xx APK from this repository's Releases page when available. Its package name is `app.wowforever.a8xx`, so it can be installed alongside Jared's upstream `app.wowforever` build, GameNative or Winlator.
 
 ### 2. Copy your WoW game data to the device (one-time setup)
 
@@ -112,7 +127,7 @@ tools/fetch_components.sh           # Wine/Proton, DXVK and Turnip archives (~13
 
 Release builds are signed with `app/keystores/keystore.properties` when it exists (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Otherwise they fall back to the debug key. Builds signed with different keys can't update each other, so switching between them means uninstalling first.
 
-`fetch_components.sh` downloads the three runtime archives from this repo's `components-v1` release and checks them against `tools/components.sha256`. If you already have them, pass a folder instead: `tools/fetch_components.sh /path/to/components`.
+`fetch_components.sh` downloads Proton, DXVK and the SteamFlow A8xx Turnip driver and checks them against `tools/components.sha256`. If you already have them, pass a folder instead: `tools/fetch_components.sh /path/to/components`.
 
 ---
 
@@ -120,7 +135,12 @@ Release builds are signed with `app/keystores/keystore.properties` when it exist
 
 This project packages other people's work into a single-purpose app. None of it would exist without:
 
+- **[jaredgei/wow-forever-android](https://github.com/jaredgei/wow-forever-android)** by Jared Geilich — the standalone WoW Android launcher, updater and GameNative integration this fork is based on.
+
 - **[GameNative](https://github.com/utkarshdalal/GameNative)** by Utkarsh Dalal and contributors (GPL-3.0). The Android app, the Wine container management and the X server are all GameNative, based on v1.2.1. GameNative in turn builds on **[Pluvia](https://github.com/oxters168/Pluvia)**, **[Winlator](https://github.com/brunodev85/winlator)**, **[Winlator Cmod](https://github.com/coffincolors/winlator)** and the **[Bionic Vulkan wrapper](https://github.com/leegao/bionic-vulkan-wrapper)**.
+- **SteamFlow A8xx additions:** automatic Adreno 830/840 profile selection, patched Gen8 V32 Turnip profile, A8xx defaults and manual override controls.
+- **u/BryTheGuy06** for the original RP6 all-in-one test work that established the legacy Adreno 740 path.
+- **arusiasotto** for the A840 investigation and Gen8 driver work.
 - **The WoW Forever RP6 community bundle**, which first got the beta running on a Retroid Pocket 6 in GameNative and supplied the three custom runtime components:
   - **Proton 11 ARM64EC** built from [The412Banner/proton-wine](https://github.com/The412Banner/proton-wine/tree/e5fa703ed7f7329e20d7ede481ab185cf8b1a8b2) with an ARM64 copied-syscall fix and an NLS fallback allocation patch.
   - **DXVK 2.4.1 (aarch64)** built from [doitsujin/dxvk](https://github.com/doitsujin/dxvk/tree/0cf05780abd7250c2cd713b7749cf32180157cf5).
@@ -134,9 +154,9 @@ Full third-party license details are in [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTI
 
 GameNative is a general game library with Steam, GOG, Epic, Amazon, EA and Rockstar stores, mod management, VR support and per-game container settings. This fork turns it into a launcher for one pre-configured container:
 
-- **Standalone identity:** package `app.wowforever`, WoW name, icons, banners and splash screen, installable next to GameNative.
+- **Standalone identity:** this SteamFlow fork uses package `app.wowforever.a8xx`, so it can sit alongside Jared's upstream app and GameNative.
 - **Direct launch & instant boot:** the app opens to a WoW splash screen (`ui/screen/wow/WoWForeverScreen.kt`) and automatically boots straight into the game once configured. Holding **Start + Select + L2 + R2** or pressing Back on the loading screen cancels boot to return to the setup screen.
-- **Pre-configured container:** bionic, Proton 11 ARM64EC, Turnip through the Vulkan wrapper, DXVK 2.4.1 aarch64, WINEESYNC off, all 8 cores, 1920x1080, and `G:` mapped to `/storage/emulated/0/WoW Forever`.
+- **A8xx-aware container:** bionic, Proton 11 ARM64EC, DXVK 2.4.1 aarch64, the patched Gen8 Turnip profile, WINEESYNC off, 1280x720 default for A830/A840, and `G:` mapped to `/storage/emulated/0/WoW Forever`.
 - **Native ARM64 launch:** GameNative wraps every Windows program in `winhandler.exe`, an x86-64 helper that needs x86 emulation. ARM64 executables now launch directly, so the game never goes through FEX, and the working directory is set from the mapped drive.
 - **Game file setup:** the launcher writes `_classic_beta_/.flavor.info` and a basic `WTF/Config.wtf` if they're missing, forces `gxApi "D3D11"` (so a copied Mac config that says Metal can't break it), and refuses to start without `.build.info`.
 - **Package-name fixes:** several paths were hard-coded to `app.gamenative`: the bionic library path rewrite (`WINEMU_HOST_PKG` / `HOST_PKG`), the gamepad shared-memory files, the DXVK state cache and the default drives. The controller path was the reason controllers didn't work.
