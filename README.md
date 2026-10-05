@@ -127,13 +127,15 @@ tools/fetch_components.sh           # Wine/Proton, DXVK and Turnip archives (~13
 
 Release builds are signed with `app/keystores/keystore.properties` when it exists (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`). Otherwise they fall back to the debug key. Builds signed with different keys can't update each other, so switching between them means uninstalling first.
 
-`fetch_components.sh` downloads the three runtime archives from this repo's `components-v1` release and checks them against `tools/components.sha256`. If you already have them, pass a folder instead: `tools/fetch_components.sh /path/to/components`.
+`fetch_components.sh` downloads Proton, DXVK and the SteamFlow A8xx Turnip driver and checks them against `tools/components.sha256`. If you already have them, pass a folder instead: `tools/fetch_components.sh /path/to/components`.
 
 ---
 
 ## Credits and how it works
 
 This project packages other people's work into a single-purpose app. None of it would exist without:
+
+- **[jaredgei/wow-forever-android](https://github.com/jaredgei/wow-forever-android)** by Jared Geilich — the standalone WoW Android launcher, updater and GameNative integration this fork is based on.
 
 - **[GameNative](https://github.com/utkarshdalal/GameNative)** by Utkarsh Dalal and contributors (GPL-3.0). The Android app, the Wine container management and the X server are all GameNative, based on v1.2.1. GameNative in turn builds on **[Pluvia](https://github.com/oxters168/Pluvia)**, **[Winlator](https://github.com/brunodev85/winlator)**, **[Winlator Cmod](https://github.com/coffincolors/winlator)** and the **[Bionic Vulkan wrapper](https://github.com/leegao/bionic-vulkan-wrapper)**.
 - **SteamFlow A8xx additions:** automatic Adreno 830/840 profile selection, patched Gen8 V32 Turnip profile, A8xx defaults and manual override controls.
@@ -152,9 +154,9 @@ Full third-party license details are in [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTI
 
 GameNative is a general game library with Steam, GOG, Epic, Amazon, EA and Rockstar stores, mod management, VR support and per-game container settings. This fork turns it into a launcher for one pre-configured container:
 
-- **Standalone identity:** package `app.wowforever`, WoW name, icons, banners and splash screen, installable next to GameNative.
+- **Standalone identity:** this SteamFlow fork uses package `app.wowforever.a8xx`, so it can sit alongside Jared's upstream app and GameNative.
 - **Direct launch & instant boot:** the app opens to a WoW splash screen (`ui/screen/wow/WoWForeverScreen.kt`) and automatically boots straight into the game once configured. Holding **Start + Select + L2 + R2** or pressing Back on the loading screen cancels boot to return to the setup screen.
-- **Pre-configured container:** bionic, Proton 11 ARM64EC, Turnip through the Vulkan wrapper, DXVK 2.4.1 aarch64, WINEESYNC off, all 8 cores, 1920x1080, and `G:` mapped to `/storage/emulated/0/WoW Forever`.
+- **A8xx-aware container:** bionic, Proton 11 ARM64EC, DXVK 2.4.1 aarch64, the patched Gen8 Turnip profile, WINEESYNC off, 1280x720 default for A830/A840, and `G:` mapped to `/storage/emulated/0/WoW Forever`.
 - **Native ARM64 launch:** GameNative wraps every Windows program in `winhandler.exe`, an x86-64 helper that needs x86 emulation. ARM64 executables now launch directly, so the game never goes through FEX, and the working directory is set from the mapped drive.
 - **Game file setup:** the launcher writes `_classic_beta_/.flavor.info` and a basic `WTF/Config.wtf` if they're missing, forces `gxApi "D3D11"` (so a copied Mac config that says Metal can't break it), and refuses to start without `.build.info`.
 - **Package-name fixes:** several paths were hard-coded to `app.gamenative`: the bionic library path rewrite (`WINEMU_HOST_PKG` / `HOST_PKG`), the gamepad shared-memory files, the DXVK state cache and the default drives. The controller path was the reason controllers didn't work.
