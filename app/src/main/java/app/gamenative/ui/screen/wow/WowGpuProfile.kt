@@ -6,7 +6,6 @@ import java.io.File
 
 enum class WowGpuProfileId(val prefValue: String) {
     AUTO("auto"),
-    ADRENO_740("adreno740"),
     ADRENO_A8XX("adrenoA8xx"),
 }
 
@@ -31,17 +30,6 @@ data class WowGpuDetection(
 object WowGpuProfiles {
     private const val PREFS = "wow_forever"
     private const val KEY_PROFILE_OVERRIDE = "gpu_profile_override"
-
-    val ADRENO_740 = WowGpuProfile(
-        id = WowGpuProfileId.ADRENO_740,
-        title = "Adreno 740 / Snapdragon 8 Gen 2",
-        shortTitle = "Adreno 740",
-        driverVersion = "Turnip-WoW-scheduler-test",
-        driverAsset = "turnip-wow-scheduler-test.zip",
-        screenSize = "1920x1080",
-        envVars = "WRAPPER_MAX_IMAGE_COUNT=0 ZINK_DESCRIPTORS=lazy ZINK_DEBUG=compact,deck_emu MESA_SHADER_CACHE_DISABLE=false MESA_SHADER_CACHE_MAX_SIZE=512MB mesa_glthread=true WINEESYNC=0 MESA_VK_WSI_PRESENT_MODE=mailbox TU_DEBUG=noconform VKD3D_SHADER_MODEL=6_0 PULSE_LATENCY_MSEC=144",
-        focusNote = "Legacy upstream profile. Jared's original project remains the recommended build for Thor/RP6/Odin 2-class Adreno 740 devices.",
-    )
 
     val ADRENO_A8XX = WowGpuProfile(
         id = WowGpuProfileId.ADRENO_A8XX,
@@ -70,9 +58,6 @@ object WowGpuProfiles {
     fun resolve(context: Context, override: WowGpuProfileId = loadOverride(context)): WowGpuDetection {
         if (override == WowGpuProfileId.ADRENO_A8XX) {
             return WowGpuDetection(ADRENO_A8XX, "Manual override", "SteamFlow A8xx profile selected", false)
-        }
-        if (override == WowGpuProfileId.ADRENO_740) {
-            return WowGpuDetection(ADRENO_740, "Manual override", "Legacy Adreno 740 profile selected", false)
         }
         return autoDetect()
     }
@@ -110,13 +95,9 @@ object WowGpuProfiles {
             return WowGpuDetection(ADRENO_A8XX, "Adreno 830", evidence.joinToString("\n"), true)
         }
 
-        if (listOf("adreno 740", "adreno (tm) 740", "sm8550").any { blob.contains(it) }) {
-            return WowGpuDetection(ADRENO_740, "Adreno 740", evidence.joinToString("\n"), true)
-        }
-
         return WowGpuDetection(
-            profile = ADRENO_740,
-            detectedLabel = "Unknown Adreno / legacy fallback",
+            profile = ADRENO_A8XX,
+            detectedLabel = "Unverified GPU · A8xx profile",
             evidence = evidence.joinToString("\n"),
             automatic = true,
         )
