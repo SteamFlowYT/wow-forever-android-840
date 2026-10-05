@@ -38,15 +38,15 @@ android {
     }
 
     defaultConfig {
-        applicationId = "app.wowforever"
+        applicationId = "app.wowforever.a8xx"
 
         minSdk = 26
 
         manifestPlaceholders["screenOrientation"] = "unspecified"
         buildConfigField("boolean", "XR_BUILD", "false")
 
-        versionCode = 200
-        versionName = "2.0.0"
+        versionCode = 210
+        versionName = "2.1.0-a8xx"
 
         buildConfigField("boolean", "GOLD", "false")
         val iconValue = "@mipmap/ic_launcher"
