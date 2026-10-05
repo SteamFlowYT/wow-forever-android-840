@@ -16,9 +16,8 @@ This fork adds automatic profile selection for newer Gen8 Adreno hardware.
 | :--- | :--- | :--- | :--- |
 | Adreno 830 | SteamFlow A8xx | `Turnip-V32-RP6sched` | 1280x720 + sysmem |
 | Adreno 840 | SteamFlow A8xx | `Turnip-V32-RP6sched` | 1280x720 + sysmem |
-| Adreno 740 | Legacy upstream | `Turnip-WoW-scheduler-test` | Upstream profile |
 
-The launcher detects known **SM8750 / Adreno 830** and **SM8850 / Adreno 840** hardware and selects the A8xx profile automatically. A manual selector is also available for **AUTO**, **830 / 840**, and **740 LEGACY**.
+The launcher detects known **SM8750 / Adreno 830** and **SM8850 / Adreno 840** hardware and selects the A8xx profile automatically. A manual selector is also available for **AUTO** and **830 / 840**.
 
 For Snapdragon 8 Gen 2 / Adreno 740 devices such as Thor, Retroid Pocket 6 and Odin 2, the original project remains the recommended build: https://github.com/jaredgei/wow-forever-android
 
@@ -34,7 +33,7 @@ The A8xx fork uses a separate Android package ID, `app.wowforever.a8xx`, so it c
 
 Requirements:
 
-- This fork primarily targets Snapdragon 8 Elite / Adreno 830 and the newer Adreno 840 path. The legacy Adreno 740 profile is retained but is not the focus here.
+- This fork primarily targets Snapdragon 8 Elite / Adreno 830 and the newer Adreno 840 path. Adreno 740 support is intentionally left to the upstream project.
 - Android 10 or newer, 64-bit.
 - About **80 GB** free for the game data (internal storage or SD card), plus about 4 GB of internal storage for the app and its Windows environment.
 - A Mac or PC with the WoW Forever beta installed through Battle.net, to copy the game data from.
