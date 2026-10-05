@@ -27,6 +27,9 @@ jobs:
       - name: Make scripts executable
         run: chmod +x gradlew tools/fetch_components.sh
 
+      - name: Configure Android SDK path
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
       - name: Fetch WoW runtime components
         run: tools/fetch_components.sh
 
